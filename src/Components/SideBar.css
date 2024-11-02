@@ -1,0 +1,38 @@
+.main{
+    background-color: #1f1f24;
+    width: 20vw;
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    color: white;
+    /* padding-right: 1vw; */
+}
+.collapse-content div{
+    background-color: #1f1f24;
+    width: 100%;
+    display: flex;
+    justify-content: start;
+    font-size:15px;
+    margin-bottom: 1vw;
+    margin-left: 0.5vw;
+    color: #dee2e6;
+}
+
+
+
+ 
+.mainChild1{
+    height: 20vh;
+    width: 20vw;
+    padding-top: 2vh;
+}
+.mainChild1 img{
+    width: 8vw;
+    margin: auto;
+}
+
+.mainChild2{
+    height: 80vh;
+    overflow-y: auto;
+}
