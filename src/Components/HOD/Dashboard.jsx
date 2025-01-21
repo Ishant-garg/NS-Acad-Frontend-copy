@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import  { useState, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Users, Filter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -77,6 +77,7 @@ const Dashboard = () => {
                 <p className="text-blue-100 text-sm mt-1">Department: {department}</p>
               </div>
             </div>
+            
             <div className="flex items-center gap-2 text-sm text-blue-100">
               <Filter className="w-4 h-4" />
               <span>{facultyData.length} Faculty Members</span>
