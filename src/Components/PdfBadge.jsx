@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
 import PDFViewer from './PDFViewer';
+import api from '../../utils/api'
 import './PDFViewr.css'
+import '../../utils/api'
 
-const PdfBadge = (props) => {
+const PdfBadge = () => {
 
     const [pdfData, setPdfData] = useState(null);
 
     useEffect(() => {
         async function fetchPDF() {
           try {
-            const pdfID = props.PdfID;
-            const response = await axios.get(`http://localhost:8000/file/view/${pdfID}`);
+            const pdfID = localStorage.getItem("fileID");
+            const response = await api.get(`/file/view/${pdfID}`);
             setPdfData(response.data.pdfData);
           } catch (error) {
             console.error('Error fetching PDF:', error);

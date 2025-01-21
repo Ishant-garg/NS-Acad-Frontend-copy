@@ -1,228 +1,210 @@
 import React, { useState } from 'react';
-import axios from 'axios';
-import './Register.css';
 import { Link } from 'react-router-dom';
-import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import api from '../../utils/api';  // Fixed import
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Register = () => {
   const [step, setStep] = useState(1);
-  const [role, setRole] = useState('');
   const [formData, setFormData] = useState({});
   const [errors, setErrors] = useState([]);
-  const [flag1, setFlag1] = useState(false);
-  const [flag2, setFlag2] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const roleFields = [
-    { name: 'faculty', label: 'Faculty' },
-    { name: 'hod', label: 'HOD' },
-    { name: 'vc', label: 'VC' },
+  const roles = [
+    { value: 'faculty', label: 'Faculty Member' },
+    { value: 'hod', label: 'Head of Department' },
+    { value: 'vc', label: 'Vice Chancellor' }
   ];
 
-  const handleGoBack = () => {
-    setStep(1);
-    setRole('');
-    setFormData({});
-    setErrors([]);
-    setFlag1(false);
-    setFlag2(false);
+  const departments = [
+    { value: 'cse', label: 'Computer Science & Engineering' },
+    { value: 'ece', label: 'Electronics & Communication' },
+    { value: 'me', label: 'Mechanical Engineering' },
+    { value: 'ce', label: 'Civil Engineering' }
+  ];
+
+  const validateForm = () => {
+    const newErrors = [];
+    
+    if (!formData.email?.endsWith('@nsut.ac.in')) {
+      newErrors.push('Email must be from nsut.ac.in domain');
+    }
+    
+    if (formData.password?.length < 8) {
+      newErrors.push('Password must be at least 8 characters long');
+    }
+    
+    if (formData.password !== formData.confirmPassword) {
+      newErrors.push('Passwords do not match');
+    }
+
+    // Added validation for required fields
+    if (!formData.fullname?.trim()) {
+      newErrors.push('Full name is required');
+    }
+
+    if (!formData.username?.trim()) {
+      newErrors.push('Employee ID is required');
+    }
+
+    if (formData.role !== 'vc' && !formData.department) {
+      newErrors.push('Department is required');
+    }
+    
+    setErrors(newErrors);
+    return newErrors.length === 0;
   };
 
-  const facultyFields = [
-    { name: 'fullname', label: 'Full Name', type: 'text', placeholder: 'Full Name' },
-    { name: 'username', label: 'Faculty Emp. ID', type: 'text', placeholder: 'Faculty ID' },
-    { name: 'email', label: 'Email', type: 'email', placeholder: 'abc@nsut.ac.in' },
-    { name: 'department', label: 'Department', type: 'select', placeholder: 'Department' },
-    { name: 'password', label: 'Password', type: 'password', placeholder: 'Password' },
-    { name: 'confirmPassword', label: 'Confirm Password', type: 'password', placeholder: 'Confirm Password' },
-  ];
-
-  const hodFields = [
-    { name: 'fullname', label: 'Full Name', type: 'text', placeholder: 'Full Name' },
-    { name: 'username', label: 'HOD Emp. ID', type: 'text', placeholder: 'HOD ID' },
-    { name: 'email', label: 'Email', type: 'email', placeholder: 'abc@nsut.ac.in' },
-    { name: 'department', label: 'Department', type: 'select', placeholder: 'Department' },
-    { name: 'password', label: 'Password', type: 'password', placeholder: 'Password' },
-    { name: 'confirmPassword', label: 'Confirm Password', type: 'password', placeholder: 'Confirm Password' },
-  ];
-
-  const vcFields = [
-    { name: 'fullname', label: 'Full Name', type: 'text', placeholder: 'Full Name' },
-    { name: 'username', label: 'VC Emp. ID', type: 'text', placeholder: 'VC ID' },
-    { name: 'email', label: 'Email', type: 'email', placeholder: 'abc@nsut.ac.in' },
-    { name: 'password', label: 'Password', type: 'password', placeholder: 'Password' },
-    { name: 'confirmPassword', label: 'Confirm Password', type: 'password', placeholder: 'Confirm Password' },
-  ];
-
-  const validateEmail = (email) => {
-    const regex = /^[a-z0-9._%+-]+@nsut\.ac\.in$/;
-    return regex.test(email);
-  };
-
-  const handleRoleSelect = (selectedRole) => {
-
-    setFormData(prevData => ({ ...prevData, ["role"]: selectedRole }));
-    setRole(selectedRole);
+  const handleRoleSelect = (value) => {
+    setFormData(prev => ({ ...prev, role: value }));
     setStep(2);
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prevData => ({ ...prevData, [name]: value }));
-  
-    let newErrors = [...errors];
-  
-    if (name === 'email') {
-      const ans = validateEmail(value);
-      setFlag1(ans);
-      if (!ans) {
-        newErrors = newErrors.filter(error => !error.includes("Email"));
-        newErrors.push("Email must be of the type @nsut.ac.in");
-      } else {
-        newErrors = newErrors.filter(error => !error.includes("Email"));
-      }
-    }
-    if (name === 'password' || name === 'confirmPassword') {
-      const passwordValue = name === 'password' ? value : formData.password;
-      const confirmPasswordValue = name === 'confirmPassword' ? value : formData.confirmPassword;
-      const ans = passwordValue === confirmPasswordValue && passwordValue !== '';
-      setFlag2(ans);
-      if (!ans) {
-        newErrors = newErrors.filter(error => !error.includes("Passwords"));
-        newErrors.push("Passwords do not match!");
-      } else {
-        newErrors = newErrors.filter(error => !error.includes("Passwords"));
-      }
-    }
-  
-    setErrors(newErrors);
-  };
-
   const handleSubmit = async (e) => {
-    e.preventDefault(); 
-
-    if (formData.password !== formData.confirmPassword) {
-      toast.error("Passwords don't match");
-      return;
-    }
-
-    if (!validateEmail(formData.email)) {
-      toast.error("Please enter a valid @nsut.ac.in email address");
-      return;
-    }
+    e.preventDefault();
+    
+    // Uncommented validation
+    if (!validateForm()) return;
+    
+    setIsLoading(true);
     try {
-      const response = await axios.post(`http://localhost:8000/auth/register`, formData);
-      toast.success('Registration successful!');
-      setErrors([]);
-    } catch (err) {
-      toast.error('Registration failed. Please try again.');
-      // console.error('Registration error:', err);
+      const response = await api.post('/auth/register', formData);
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        window.location.href = '/';
+      } else {
+        throw new Error('No token received');
+      }
+    } catch (error) {
+      setErrors([error.response?.data?.message || 'Registration failed']);
+      console.error('Registration error:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const renderFields = () => {
-    let fields;
-    switch (role) {
-      case 'faculty':
-        fields = facultyFields;
-        break;
-      case 'hod':
-        fields = hodFields;
-        break;
-      case 'vc':
-        fields = vcFields;
-        break;
-      default:
-        fields = [];
-    }
-
-    return fields.map((field) => (
-      <div key={field.name} className='formGroup inline-block w-[50%]'>
-        {field.type !== 'select' ? (
-          <>
-            <label htmlFor={field.name} className='label register-label'>{field.label}:</label>
-            <input
-              type={field.type}
-              id={field.name}
-              name={field.name}
-              value={formData[field.name] || ''}
-              onChange={handleInputChange}
-              required
-              className='input register-input'
-              placeholder={field.placeholder}
-            />
-          </>
-        ) : (
-          <>
-            <label htmlFor={field.name} className='label register-label'>{field.label}:</label>
-            <select
-              id={field.name}
-              name={field.name}
-              value={formData[field.name] || ''}
-              onChange={handleInputChange}
-              required
-              className='input register-input'
+  const renderRoleSelection = () => (
+    <div className="space-y-4">
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold text-center">Choose Your Role</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {roles.map(role => (
+            <Button
+              key={role.value}
+              variant="outline"
+              className="h-24 text-lg"
+              onClick={() => handleRoleSelect(role.value)}
             >
-              <option value="" className='optionRegister'>Select a Department</option>
-              <option value="cse" className='optionRegister'>Computer Science</option>
-              <option value="ece" className='optionRegister'>Electrical</option>
-            </select>
-          </>
+              {role.label}
+            </Button>
+          ))}
+        </div>
+      </CardContent>
+    </div>
+  );
+
+  const renderRegistrationForm = () => (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold text-center">Complete Registration</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4">
+          <Input
+            placeholder="Full Name"
+            value={formData.fullname || ''}
+            onChange={e => setFormData(prev => ({ ...prev, fullname: e.target.value }))}
+            required
+          />
+          
+          <Input
+            placeholder="Employee ID"
+            value={formData.username || ''}
+            onChange={e => setFormData(prev => ({ ...prev, username: e.target.value }))}
+            required
+          />
+          
+          <Input
+            type="email"
+            placeholder="Email (@nsut.ac.in)"
+            value={formData.email || ''}
+            onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
+            required
+          />
+          
+          {(formData.role === 'faculty' || formData.role === 'hod') && (
+            <Select 
+              value={formData.department}
+              onValueChange={value => setFormData(prev => ({ ...prev, department: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select Department" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.map(dept => (
+                  <SelectItem key={dept.value} value={dept.value}>
+                    {dept.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
+          <Input
+            type="password"
+            placeholder="Password"
+            value={formData.password || ''}
+            onChange={e => setFormData(prev => ({ ...prev, password: e.target.value }))}
+            required
+          />
+          
+          <Input
+            type="password"
+            placeholder="Confirm Password"
+            value={formData.confirmPassword || ''}
+            onChange={e => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+            required
+          />
+        </div>
+
+        {errors.length > 0 && (
+          <div className="mt-4">
+            {errors.map((error, index) => (
+              <Alert key={index} variant="destructive" className="mb-2">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ))}
+          </div>
         )}
-      </div>
-    ));
-  };
+
+        <div className="mt-6 flex justify-between gap-4">
+          <Button type="button" variant="outline" onClick={() => setStep(1)}>
+            Back
+          </Button>
+          <Button type="submit" disabled={isLoading}>
+            {isLoading ? "Registering..." : "Register"}
+          </Button>
+        </div>
+
+        <div className="mt-4 text-center">
+          <Link to="/" className="text-blue-500 hover:underline">
+            Already have an account? Sign In
+          </Link>
+        </div>
+      </CardContent>
+    </form>
+  );
 
   return (
-    <div className="register-container">
-      <ToastContainer position="top-right" autoClose={3000} />
-      <div className="backgroundRegister">
-        <div className="shapeRegister"></div>
-        <div className="shapeRegister"></div>
-      </div>
-      <form onSubmit={handleSubmit} className='form register-form'>
-        <h3>Sign Up Here</h3>
-        {step === 1 ? (
-          <>
-            <h4>Select your role:</h4>
-            <div className="role-selection">
-              {roleFields.map((roleField) => (
-                <button
-                  key={roleField.name}
-                  type="button"
-                  onClick={() => handleRoleSelect(roleField.name)}
-                  className="role-button"
-                >
-                  {roleField.label}
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <>
-            {renderFields()}
-            <div style={{ textAlign: 'end', color: '#eaf0fb', marginTop: '20px' }}>
-              <Link to='/'>Already have an account? Sign In</Link>
-            </div>
-            <br />
-            <div style={{ display: 'flex', justifyContent: 'space-between',gap:'1vw' }}>
-              <button type="button" onClick={handleGoBack} className='button'>Back</button>
-              {flag1 && flag2 ? (
-                <button type="submit" className='button'>Register</button>
-              ) : (
-                <button type="submit" style={{cursor:'not-allowed'}} disabled={true} className='button'>Register</button>
-              )}
-            </div>
-            {errors.length > 0 && (
-              <div className="error-container">
-                {errors.map((error, index) => (
-                  <div key={index} className="error-message">{error}</div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </form>
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-indigo-200 flex items-center justify-center p-4">
+      <Card className="w-full max-w-2xl shadow-xl">
+        {step === 1 ? renderRoleSelection() : renderRegistrationForm()}
+      </Card>
     </div>
   );
 };

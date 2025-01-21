@@ -1,52 +1,95 @@
-import React, { useEffect, useState } from 'react'
-import axios from 'axios'
-import { IoPersonCircle } from "react-icons/io5";
-import { CgProfile } from "react-icons/cg";
-import { MdLogout } from "react-icons/md";
-import './Navbar.css'
- 
-const Navbar = (props) => {
+import React, { useState, useRef, useEffect } from 'react';
+import { User, Settings, LogOut } from 'lucide-react';
+import { fetchUserData } from '../../utils/auth';
 
-    const userID = localStorage.getItem('myData');
-    const [name,setName] = useState("");
-    const [hovered,setHovered] = useState(false); 
+const Navbar = ({ handleLogout }) => {
+  const [userData, setUserData] = useState(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
-    useEffect(()=>{
- 
-        async function getUserData(){
-            const parsedName = JSON.parse(localStorage.getItem('name'));
-            setName(parsedName.id);  
-        }
-        getUserData(); 
- 
-    },[userID,name])
-    const changeHover = () =>{
-        setHovered(!hovered); 
-    }
+  useEffect(() => {
+    const getUserData = async () => {
+      const user = await fetchUserData();
+      setUserData(user);
+    };
+    getUserData();
+  }, []);
 
-    return (
-        // <div>
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
 
-            <div className="profileBox" >
-                <div  className="profileBox2" onClick={changeHover} >
-                    <IoPersonCircle className='text-blue-500 bg-white rounded-full w-12 h-12 border-0 ' />
-                    <div className='h-12 text-2xl font-bold pt-[8px] ' >{name}</div>
-                </div>
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-                {
-                hovered && 
-                    <div className='hoverCard' >
-                        <ul>
-                            <li className='flex gap-3 items-center' ><CgProfile className='h-5 w-5' /> <span>Profile</span></li>
-                            <hr className='border-1'  />
-                            <li  onClick={props.handleLogout}  className='flex gap-3 items-center' ><MdLogout  className='h-5 w-5 text-red-700' /> <span>Logout</span></li>
-                        </ul>
-                    </div>
-                }
+  const getRoleDisplay = (role) => {
+    const roles = {
+      'faculty': 'Faculty Member',
+      'hod': 'Head of Department',
+      'vc': 'Vice Chancellor'
+    };
+    return roles[role] || role;
+  };
+
+  if (!userData) return null;
+
+  return (
+    <nav className="fixed top-0 right-0 z-50 ml-[20%] bg-white border-b border-slate-200 w-[calc(80%)]">
+      <div className="h-16 px-6 flex items-center justify-between">
+        <div className="flex items-center" />
+        
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="flex items-center gap-3 hover:bg-slate-50 rounded-lg p-2 transition-colors duration-200"
+          >
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600">
+              <User className="w-5 h-5" />
             </div>
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-medium text-slate-700">{userData.fullname}</span>
+              <span className="text-xs text-slate-500">{getRoleDisplay(userData.role)}</span>
+            </div>
+          </button>
 
-        // </div>
-    )
-}
+          {isOpen && (
+            <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-slate-200 py-2">
+              <div className="px-4 py-3 border-b border-slate-200">
+                <p className="text-sm font-medium text-slate-700">{userData.fullname}</p>
+                <p className="text-xs text-slate-500">{userData.email}</p>
+                <p className="text-xs text-slate-500">{userData.department}</p>
+              </div>
+              
+              <div className="py-2">
+                <button 
+                  className="w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <Settings className="w-4 h-4 text-slate-500" />
+                  Profile Settings
+                </button>
+                
+                <button 
+                  className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3"
+                  onClick={() => {
+                    setIsOpen(false);
+                    handleLogout();
+                  }}
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
+};
 
-export default Navbar
+export default Navbar;
