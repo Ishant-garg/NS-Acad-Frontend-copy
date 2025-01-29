@@ -9,6 +9,7 @@ import Navbar from './Components/Navbar';
 import Query from './Components/HOD/Dashboard';
 import './App.css'
 import FacultyDetails from './Components/HOD/FacultyDetails';
+import Profile from './Components/Profile';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const [user, setUser] = useState(null);
@@ -78,6 +79,8 @@ const App = () => {
               <Navbar user={user} handleLogout={handleLogout} />
               <Routes>
                 <Route path="/" element={<Home currentPage={currentPage} />} />
+                <Route path="/profile" element={<Profile/>} />
+
               </Routes>
             </div>
           </div>
@@ -112,6 +115,7 @@ const App = () => {
           <Route path="/" element={<Login handleLogin={handleLogin} />} />
           <Route path="/register" element={<Register />} />
           <Route path="*" element={<Navigate to="/" />} />
+
         </Routes>
       )}
     </>

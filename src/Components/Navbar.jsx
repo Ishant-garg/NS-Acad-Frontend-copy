@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Settings, LogOut } from 'lucide-react';
 import { fetchUserData } from '../../utils/auth';
+import { useNavigate } from 'react-router-dom';
 
 const Navbar = ({ handleLogout }) => {
   const [userData, setUserData] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
-
+  const navigate = useNavigate();
   useEffect(() => {
     const getUserData = async () => {
       const user = await fetchUserData();
@@ -67,7 +68,10 @@ const Navbar = ({ handleLogout }) => {
               <div className="py-2">
                 <button 
                   className="w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"
-                  onClick={() => setIsOpen(false)}
+                  onClick={() => {
+                    setIsOpen(false);
+                    navigate('/profile'); 
+                  }}
                 >
                   <Settings className="w-4 h-4 text-slate-500" />
                   Profile Settings
