@@ -10,6 +10,7 @@ import Query from './Components/HOD/Dashboard';
 import './App.css'
 import FacultyDetails from './Components/HOD/FacultyDetails';
 import Profile from './Components/Profile';
+import Copo from './Components/Faculty/Copo';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const [user, setUser] = useState(null);
@@ -71,19 +72,21 @@ const App = () => {
       case 'vc':
       case 'faculty':
         return (
-          <div className="app-container">
-            <div className="sidebar">
-              <SideBar changeCurrentPage={setCurrentPage} />
-            </div>
-            <div className="content">
-              <Navbar user={user} handleLogout={handleLogout} />
-              <Routes>
-                <Route path="/" element={<Home currentPage={currentPage} />} />
-                <Route path="/profile" element={<Profile/>} />
-
-              </Routes>
-            </div>
-          </div>
+            <Routes>
+              <Route path="/" element={
+                <div className="app-container">
+                  <div className="sidebar">
+                    <SideBar changeCurrentPage={setCurrentPage} />
+                  </div>
+                  <div className="content">
+                    <Navbar user={user} handleLogout={handleLogout} />
+                      <Home currentPage={currentPage} />
+                  </div>
+                </div>
+                }/>
+              <Route path="/profile" element={<Profile/>} />
+              <Route path="/copo" element={<Copo/>} />
+            </Routes>
         );
       
       case 'hod':
