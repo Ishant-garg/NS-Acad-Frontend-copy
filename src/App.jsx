@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
-import { fetchUserData, logout } from '../utils/auth';
+import { fetchUserData, logout } from './utils/auth';
 import SideBar from './Components/SideBar';
 import Home from './Pages/Home';
 import Login from './Authentication/Login';
@@ -10,7 +10,7 @@ import Query from './Components/HOD/Dashboard';
 import './App.css'
 import FacultyDetails from './Components/HOD/FacultyDetails';
 import Profile from './Components/Profile';
-import Copo from './Components/Faculty/Copo';
+import CoAnalysis from './Pages/Faculty/COPO/CoAnalysis';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const [user, setUser] = useState(null);
@@ -85,7 +85,7 @@ const App = () => {
                 </div>
                 }/>
               <Route path="/profile" element={<Profile/>} />
-              <Route path="/copo" element={<Copo/>} />
+              <Route path="/copo" element={<CoAnalysis/>} />
             </Routes>
         );
       

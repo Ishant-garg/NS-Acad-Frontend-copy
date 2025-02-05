@@ -19,8 +19,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { getCurrentUser } from '../../utils/auth';
-import api from '../../utils/api';
+import { getCurrentUser } from '../utils/auth';
+import api from '../utils/api';
 import PdfBadge from './PdfBadge';
 
 const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) => {

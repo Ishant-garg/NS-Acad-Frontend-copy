@@ -10,8 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import api from '../../../utils/api';
-import { fetchUserData } from '../../../utils/auth';
+import api from '../../utils/api';
+import { fetchUserData } from '../../utils/auth';
 
 const Dashboard = () => {
   const navigate = useNavigate();

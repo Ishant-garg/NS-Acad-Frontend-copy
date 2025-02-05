@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Settings, LogOut } from 'lucide-react';
-import { fetchUserData } from '../../utils/auth';
+import { fetchUserData } from '../utils/auth';
 import { useNavigate } from 'react-router-dom';
 
 const Navbar = ({ handleLogout }) => {

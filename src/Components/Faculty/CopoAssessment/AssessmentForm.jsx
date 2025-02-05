@@ -1,0 +1,76 @@
+import React from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAssessment } from '../../../hooks/useAssessment';
+import AssessmentGrid from './AssessmentGrid';
+import AssessmentHeader from './AssessmentHeader';
+
+const AssessmentForm = () => {
+  const {
+    formData,
+    loading,
+    error,
+    assessmentConfig,
+    getUniqueBranches,
+    getSections,
+    updateFormData,
+    updateQuestionParts,
+    updatePartDetails,
+    updateStudent,
+    updateStudentMark,
+    calculateStudentTotal,
+    calculateCOTotal,
+    calculateMaxCOMarks
+  } = useAssessment();
+
+  if (loading) return <div className="p-6">Loading class data...</div>;
+  if (error) return <div className="p-6 text-red-600">{error}</div>;
+
+  const renderAssessmentContent = (type) => (
+    <div className="space-y-6">
+      <AssessmentGrid
+        type={type}
+        config={assessmentConfig[type]}
+        formData={formData}
+        updateQuestionParts={updateQuestionParts}
+        updatePartDetails={updatePartDetails}
+        updateStudent={updateStudent}
+        updateStudentMark={updateStudentMark}
+        calculateStudentTotal={calculateStudentTotal}
+        calculateCOTotal={calculateCOTotal}
+        calculateMaxCOMarks={calculateMaxCOMarks}
+      />
+    </div>
+  );
+
+  return (
+    <div className="p-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>COPO Assessment Form</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AssessmentHeader
+            formData={formData}
+            getUniqueBranches={getUniqueBranches}
+            getSections={getSections}
+            updateFormData={updateFormData}
+          />
+
+          <Tabs defaultValue="tms" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="tms">TMS</TabsTrigger>
+              <TabsTrigger value="tca">TCA</TabsTrigger>
+              <TabsTrigger value="tes">TES</TabsTrigger>
+            </TabsList>
+            <TabsContent value="tms">{renderAssessmentContent('tms')}</TabsContent>
+            <TabsContent value="tca">{renderAssessmentContent('tca')}</TabsContent>
+            <TabsContent value="tes">{renderAssessmentContent('tes')}</TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default AssessmentForm;

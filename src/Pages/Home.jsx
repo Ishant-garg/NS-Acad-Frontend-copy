@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Loader2 } from 'lucide-react';
 import List from '../Components/List';
 import { array } from '../assets/GlobalArrays';
-import { getCurrentUser } from '../../utils/auth';
+import { getCurrentUser } from '../utils/auth';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import Form from '../Components/Form';
-import api from '../../utils/api'
+import api from '../utils/api'
 import axios from 'axios';
 
 const Home = ({ currentPage: PageID, changeCurrentPage }) => {
@@ -116,9 +116,7 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
         </AlertDialog>
       </div>
 
-      {/* Enhanced Main Content Area */}
       <div className="p-8">
-        {/* Enhanced Stats Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200 hover:shadow-md transition-shadow duration-200">
             <div className="flex items-center space-x-4">

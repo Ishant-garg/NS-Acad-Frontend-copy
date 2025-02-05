@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { User, ArrowLeft, Eye, FileDown } from "lucide-react";
-import api from "../../../utils/api";
+import api from "../../utils/api";
 import { array } from "../../assets/GlobalArrays";
 
 const FacultyDetails = () => {
