@@ -190,7 +190,7 @@ const AssessmentGrid = ({
           break;
       }
 
-      const response = await axios.post('/api/course-assessment/create', assessmentData);
+      const response = await api.post('/update/course-assessment/create', assessmentData);
       
       setSaveStatus('Saved successfully!');
       setTimeout(() => setSaveStatus(''), 3000);
