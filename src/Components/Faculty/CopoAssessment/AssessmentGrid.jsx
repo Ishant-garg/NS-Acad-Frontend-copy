@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 const AssessmentGrid = ({ 
-  type, // 'TMS', 'TCA', or 'TES'
+  type, // 'tms', 'TCA', or 'TES'
   assessmentNumber, // For TCA (1,2,3)
-  tmsType, // For TMS ('Tutorial', 'MiniProject', 'SurpriseTest')
+  tmsType, // For tms ('Tutorial', 'MiniProject', 'SurpriseTest')
   config,
   subjectCode,
   subjectName,
@@ -23,7 +23,7 @@ const AssessmentGrid = ({
     
     const fetchAssessmentData = async () => {
       try {
-        const response = await axios.get(`/api/course-assessment/${facultyId}`, {
+        const response = await axios.get(`/course-assessment/${facultyId}`, {
           params: {
             type,
             assessmentNumber,
@@ -68,7 +68,7 @@ const AssessmentGrid = ({
     }
     
     switch (type) {
-      case 'TMS':
+      case 'tms':
         if (!updatedStudents[index].tmsMarks) {
           updatedStudents[index].tmsMarks = [];
         }
@@ -81,7 +81,7 @@ const AssessmentGrid = ({
         }];
         break;
         
-      case 'TCA':
+      case 'tca':
         if (!updatedStudents[index].tcaMarks) {
           updatedStudents[index].tcaMarks = [];
         }
@@ -110,7 +110,7 @@ const AssessmentGrid = ({
         };
         break;
         
-      case 'TES':
+      case 'tes':
         if (!updatedStudents[index].tesSurvey) {
           updatedStudents[index].tesSurvey = {
             surveyDate: new Date(),
@@ -155,7 +155,7 @@ const AssessmentGrid = ({
       };
 
       switch (type) {
-        case 'TMS':
+        case 'tms':
           assessmentData.tmsConfig = {
             type: tmsType,
             maxMarks: config.maxMarks,
@@ -164,7 +164,7 @@ const AssessmentGrid = ({
           };
           break;
           
-        case 'TCA':
+        case 'tca':
           assessmentData.tcaConfig = {
             numberOfAssessments: 3,
             weightage: config.weightage,
@@ -181,7 +181,7 @@ const AssessmentGrid = ({
           };
           break;
           
-        case 'TES':
+        case 'tes':
           assessmentData.tesConfig = {
             numberOfQuestions: config.questions.length,
             weightage: config.weightage,
@@ -189,7 +189,7 @@ const AssessmentGrid = ({
           };
           break;
       }
-
+      console.log(assessmentData);
       const response = await api.post('/update/course-assessment/create', assessmentData);
       
       setSaveStatus('Saved successfully!');
@@ -203,7 +203,7 @@ const AssessmentGrid = ({
 
   const renderHeader = () => {
     switch (type) {
-      case 'TMS':
+      case 'tms':
         return (
           <tr className="bg-gray-50">
             <th className="border p-2">Roll No.</th>
@@ -214,7 +214,7 @@ const AssessmentGrid = ({
           </tr>
         );
         
-      case 'TCA':
+      case 'tca':
         return (
           <tr className="bg-gray-50">
             <th className="border p-2">Roll No.</th>
@@ -230,7 +230,7 @@ const AssessmentGrid = ({
           </tr>
         );
         
-      case 'TES':
+      case 'tes':
         return (
           <tr className="bg-gray-50">
             <th className="border p-2">Roll No.</th>
@@ -246,6 +246,7 @@ const AssessmentGrid = ({
   };
 
   const renderStudentRows = () => {
+    console.log(students);
     return [...Array(numberOfStudents)].map((_, index) => (
       <tr key={index}>
         <td className="border p-2">
@@ -271,7 +272,7 @@ const AssessmentGrid = ({
 
   const renderMarkInputs = (studentIndex) => {
     switch (type) {
-      case 'TMS':
+      case 'tms':
         return (
           <td className="border p-2">
             <input
@@ -285,7 +286,7 @@ const AssessmentGrid = ({
           </td>
         );
         
-      case 'TCA':
+      case 'tca':
         return (
           <>
             {config.questions.map((question, qIndex) => 
@@ -309,7 +310,7 @@ const AssessmentGrid = ({
           </>
         );
         
-      case 'TES':
+      case 'tes':
         return config.questions.map((_, qIndex) => (
           <td key={qIndex} className="border p-2">
             <select
