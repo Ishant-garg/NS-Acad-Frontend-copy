@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
 import PDFViewer from './PDFViewer';
-import api from '../utils/api'
+import api from '../../../utils/api'
 import './PDFViewr.css'
-import '../utils/api'
+import '../../../utils/api'
 
 const PdfBadge = () => {
 

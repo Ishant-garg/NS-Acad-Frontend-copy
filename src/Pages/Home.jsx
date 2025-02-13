@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Loader2 } from 'lucide-react';
-import List from '../Components/List';
 import { array } from '../assets/GlobalArrays';
 import { getCurrentUser } from '../utils/auth';
 import {
@@ -14,9 +13,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import Form from '../Components/Form';
 import api from '../utils/api'
 import axios from 'axios';
+import Form from '../Components/Faculty/Performance/Form';
+import List from '../Components/Faculty/Performance/List';
 
 const Home = ({ currentPage: PageID, changeCurrentPage }) => {
   const buttonRef = useRef(null);
@@ -99,7 +99,7 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                   </div>
                 ) : (
-                  <Form 
+                  <Form
                     pageFields={pageData.fields} 
                     submitFormData={submitFormData} 
                     cancel={cancel}
