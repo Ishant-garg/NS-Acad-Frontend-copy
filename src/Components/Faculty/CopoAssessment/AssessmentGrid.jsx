@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 
 const AssessmentGrid = ({ 
   type, // 'tms', 'TCA', or 'TES'
@@ -25,34 +26,90 @@ const AssessmentGrid = ({
     4: { partA: 'CO1', partB: 'CO1', partC: 'CO1' },
     5: { partA: 'CO1', partB: 'CO1', partC: 'CO1' }
   });
+  const [tcaSelectedCOs, setTcaSelectedCOs] = useState({
+    1: { co1: true, co2: false, co3: false, co4: false, co5: false, co6: false },
+    2: { co1: false, co2: true, co3: false, co4: true, co5: false, co6: false },
+    3: { co1: false, co2: false, co3: true, co4: false, co5: false, co6: false }
+  });
 
   const cos = ['CO1', 'CO2', 'CO3', 'CO4', 'CO5', 'CO6'];
 
-  useEffect(() => {
-    
-    const fetchAssessmentData = async () => {
-      try {
-        const response = await axios.get(`/course-assessment/${facultyId}`, {
-          params: {
-            type,
-            assessmentNumber,
-            tmsType,
-            subjectCode,
-            branch,
-            section,
-            semester,
-            academicYear
-          }
-        });
-        setAssessmentData(response.data);
-        if (response.data.students) {
-          setStudents(response.data.students);
-          setNumberOfStudents(response.data.students.length);
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const data = evt.target.result;
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const excelData = XLSX.utils.sheet_to_json(firstSheet);
+      
+      const updatedStudents = excelData.map(row => {
+        const student = {
+          rollNo: row['Roll No'] || row['RollNo'] || row['Roll Number'] || '',
+          name: row['Name'] || row['Student Name'] || '',
+          marks: {}
+        };
+
+        if (type === 'tms') {
+          student.tmsMarks = [{
+            type: tmsType,
+            questions: Array(5).fill().map((_, idx) => ({
+              partA: { maxMarks: 5, coNumber: selectedCOs[idx + 1].partA },
+              partB: { maxMarks: 5, coNumber: selectedCOs[idx + 1].partB }
+            }))
+          }];
+        } else if (type === 'tes') {
+          student.tesMarks = [{
+            questions: Array(5).fill().map((_, idx) => ({
+              partA: { maxMarks: 7, coNumber: selectedCOs[idx + 1].partA },
+              partB: { maxMarks: 7, coNumber: selectedCOs[idx + 1].partB },
+              partC: { maxMarks: 6, coNumber: selectedCOs[idx + 1].partC }
+            }))
+          }];
+        } else if (type === 'tca') {
+          student.tcaMarks = [
+            { assessmentNumber: 1, marks: {} },
+            { assessmentNumber: 2, marks: {} }
+          ];
         }
-      } catch (error) {
-        console.error('Error fetching assessment data:', error);
-      }
+
+        return student;
+      }).filter(student => student.rollNo && student.name);
+
+      setStudents(updatedStudents);
+      setNumberOfStudents(updatedStudents.length);
     };
+    
+    reader.readAsArrayBuffer(file);
+  };
+
+  const fetchAssessmentData = async () => {
+    try {
+      const response = await axios.get(`/course-assessment/${facultyId}`, {
+        params: {
+          type,
+          assessmentNumber,
+          tmsType,
+          subjectCode,
+          branch,
+          section,
+          semester,
+          academicYear
+        }
+      });
+      setAssessmentData(response.data);
+      if (response.data.students) {
+        setStudents(response.data.students);
+        setNumberOfStudents(response.data.students.length);
+      }
+    } catch (error) {
+      console.error('Error fetching assessment data:', error);
+    }
+  };
+
+  useEffect(() => {
     fetchAssessmentData();
   }, [facultyId, type, assessmentNumber, tmsType]);
 
@@ -123,7 +180,10 @@ const AssessmentGrid = ({
         
       case 'tca':
         if (!updatedStudents[index].tcaMarks) {
-          updatedStudents[index].tcaMarks = [];
+          updatedStudents[index].tcaMarks = [
+            { assessmentNumber: 1, marks: {} },
+            { assessmentNumber: 2, marks: {} }
+          ];
         }
         const tcaIndex = updatedStudents[index].tcaMarks.findIndex(
           m => m.assessmentNumber === assessmentNumber
@@ -131,7 +191,7 @@ const AssessmentGrid = ({
         if (tcaIndex === -1) {
           updatedStudents[index].tcaMarks.push({
             assessmentNumber,
-            questionMarks: []
+            marks: {}
           });
         }
 
@@ -139,10 +199,10 @@ const AssessmentGrid = ({
         const currentTCA = updatedStudents[index].tcaMarks.find(
           m => m.assessmentNumber === assessmentNumber
         );
-        if (!currentTCA.questionMarks[questionIndex]) {
-          currentTCA.questionMarks[questionIndex] = { parts: [] };
+        if (!currentTCA.marks[questionIndex]) {
+          currentTCA.marks[questionIndex] = { parts: [] };
         }
-        currentTCA.questionMarks[questionIndex].parts[partIndex] = {
+        currentTCA.marks[questionIndex].parts[partIndex] = {
           partNumber: partIndex + 1,
           marksObtained: Number(value),
           maxMarks: config.questions[questionIndex].parts[partIndex].maxMarks,
@@ -172,6 +232,169 @@ const AssessmentGrid = ({
       }
       return student;
     });
+    setStudents(updatedStudents);
+  };
+
+  const updateTCAMark = (index, assessmentNumber, co, part, value) => {
+    const updatedStudents = [...students];
+    if (!updatedStudents[index]) {
+      updatedStudents[index] = {};
+    }
+    if (!updatedStudents[index].tcaMarks) {
+      updatedStudents[index].tcaMarks = [
+        { assessmentNumber: 1, marks: {} },
+        { assessmentNumber: 2, marks: {} }
+      ];
+    }
+    
+    const assessment = updatedStudents[index].tcaMarks.find(m => m.assessmentNumber === assessmentNumber);
+    if (!assessment) {
+      updatedStudents[index].tcaMarks.push({ 
+        assessmentNumber: assessmentNumber, 
+        marks: {} 
+      });
+    }
+    
+    const tcaIndex = updatedStudents[index].tcaMarks.findIndex(m => m.assessmentNumber === assessmentNumber);
+    
+    // Set the marks for this part
+    if (!updatedStudents[index].tcaMarks[tcaIndex].marks[part]) {
+      updatedStudents[index].tcaMarks[tcaIndex].marks[part] = {};
+    }
+    
+    updatedStudents[index].tcaMarks[tcaIndex].marks[part].value = Number(value) || 0;
+    
+    // Distribute the marks to selected COs
+    const questionKey = assessmentNumber === 1 ? 
+      (part.startsWith('q1') ? 1 : 3) : 
+      2;
+      
+    const selectedCOsForQuestion = tcaSelectedCOs[questionKey];
+    const selectedCOCount = Object.values(selectedCOsForQuestion).filter(Boolean).length;
+    
+    if (selectedCOCount > 0) {
+      const marksPerCO = (Number(value) || 0) / selectedCOCount;
+      
+      // Store the distributed marks for each selected CO
+      Object.entries(selectedCOsForQuestion).forEach(([coKey, isSelected]) => {
+        if (isSelected) {
+          if (!updatedStudents[index].tcaMarks[tcaIndex].marks[part].coDistribution) {
+            updatedStudents[index].tcaMarks[tcaIndex].marks[part].coDistribution = {};
+          }
+          updatedStudents[index].tcaMarks[tcaIndex].marks[part].coDistribution[coKey] = marksPerCO;
+        }
+      });
+    }
+    
+    setStudents(updatedStudents);
+  };
+
+  const calculateTCATotal = (index, assessmentNumber, questionKey) => {
+    const student = students[index];
+    if (!student?.tcaMarks) return 0;
+    
+    const assessment = student.tcaMarks.find(m => m.assessmentNumber === assessmentNumber);
+    if (!assessment || !assessment.marks) return 0;
+    
+    // Determine which parts belong to this question
+    let parts = [];
+    if (assessmentNumber === 1) {
+      if (questionKey === 1) {
+        parts = ['q1p1', 'q1p2'];
+      } else if (questionKey === 3) {
+        parts = ['q2p1', 'q2p2'];
+      }
+    } else if (assessmentNumber === 2) {
+      parts = ['q1p1', 'q1p2'];
+    }
+    
+    // Sum up the marks for these parts
+    return parts.reduce((sum, part) => {
+      return sum + (assessment.marks[part]?.value || 0);
+    }, 0);
+  };
+
+  const calculateTotalTCAMarks = (index) => {
+    const student = students[index];
+    if (!student?.tcaMarks) return 0;
+    
+    let total = 0;
+    
+    // Class Test 1
+    const ct1 = student.tcaMarks.find(m => m.assessmentNumber === 1);
+    if (ct1 && ct1.marks) {
+      total += Object.values(ct1.marks).reduce((sum, mark) => sum + (mark.value || 0), 0);
+    }
+    
+    // Class Test 2
+    const ct2 = student.tcaMarks.find(m => m.assessmentNumber === 2);
+    if (ct2 && ct2.marks) {
+      total += Object.values(ct2.marks).reduce((sum, mark) => sum + (mark.value || 0), 0);
+    }
+    
+    return total;
+  };
+
+  const handleTcaCOChange = (questionKey, coKey, checked) => {
+    setTcaSelectedCOs(prev => ({
+      ...prev,
+      [questionKey]: {
+        ...prev[questionKey],
+        [coKey]: checked
+      }
+    }));
+    
+    // Update all existing students to redistribute marks
+    const updatedStudents = [...students];
+    updatedStudents.forEach((student, index) => {
+      if (!student?.tcaMarks) return;
+      
+      // Determine which assessment and parts this change affects
+      let assessmentNumber, parts;
+      if (questionKey === 1) {
+        assessmentNumber = 1;
+        parts = ['q1p1', 'q1p2'];
+      } else if (questionKey === 3) {
+        assessmentNumber = 1;
+        parts = ['q2p1', 'q2p2'];
+      } else if (questionKey === 2) {
+        assessmentNumber = 2;
+        parts = ['q1p1', 'q1p2'];
+      }
+      
+      const tcaIndex = student.tcaMarks.findIndex(m => m.assessmentNumber === assessmentNumber);
+      if (tcaIndex === -1) return;
+      
+      // Redistribute marks for each part
+      parts.forEach(part => {
+        const mark = student.tcaMarks[tcaIndex].marks[part];
+        if (!mark || !mark.value) return;
+        
+        const selectedCOsForQuestion = {
+          ...tcaSelectedCOs[questionKey],
+          [coKey]: checked
+        };
+        const selectedCOCount = Object.values(selectedCOsForQuestion).filter(Boolean).length;
+        
+        if (selectedCOCount > 0) {
+          const marksPerCO = mark.value / selectedCOCount;
+          
+          if (!mark.coDistribution) {
+            mark.coDistribution = {};
+          }
+          
+          // Update distribution for all COs
+          Object.entries(selectedCOsForQuestion).forEach(([coKey, isSelected]) => {
+            if (isSelected) {
+              mark.coDistribution[coKey] = marksPerCO;
+            } else {
+              delete mark.coDistribution[coKey];
+            }
+          });
+        }
+      });
+    });
+    
     setStudents(updatedStudents);
   };
 
@@ -311,56 +534,28 @@ const AssessmentGrid = ({
     return questionTotals.sort((a, b) => b - a).slice(0, 4).reduce((a, b) => a + b, 0);
   };
 
-  const updateTCAMark = (index, assessmentNumber, co, part, value) => {
-    const updatedStudents = [...students];
-    if (!updatedStudents[index]) {
-      updatedStudents[index] = {};
-    }
-    if (!updatedStudents[index].tcaMarks) {
-      updatedStudents[index].tcaMarks = [
-        { assessmentNumber: 1, co1: {}, co3: {} },
-        { assessmentNumber: 2, co24: {} }
-      ];
-    }
-    
-    const assessment = updatedStudents[index].tcaMarks.find(m => m.assessmentNumber === assessmentNumber);
-    if (!assessment) {
-      if (assessmentNumber === 1) {
-        updatedStudents[index].tcaMarks.push({ assessmentNumber: 1, co1: {}, co3: {} });
-      } else {
-        updatedStudents[index].tcaMarks.push({ assessmentNumber: 2, co24: {} });
-      }
-    }
-    
-    const tcaIndex = updatedStudents[index].tcaMarks.findIndex(m => m.assessmentNumber === assessmentNumber);
-    if (!updatedStudents[index].tcaMarks[tcaIndex][co]) {
-      updatedStudents[index].tcaMarks[tcaIndex][co] = {};
-    }
-    
-    updatedStudents[index].tcaMarks[tcaIndex][co][part] = Number(value) || 0;
-    setStudents(updatedStudents);
-  };
-
-  const calculateTCATotal = (index, assessmentNumber, co) => {
-    const student = students[index];
-    if (!student?.tcaMarks) return 0;
-    const assessment = student.tcaMarks.find(m => m.assessmentNumber === assessmentNumber);
-    if (!assessment || !assessment[co]) return 0;
-    return (assessment[co].part1 || 0) + (assessment[co].part2 || 0);
-  };
-
-  const calculateTotalTCAMarks = (index) => {
-    const student = students[index];
-    if (!student?.tcaMarks) return 0;
-    return (
-      calculateTCATotal(index, 1, 'co1') +
-      calculateTCATotal(index, 1, 'co3') +
-      calculateTCATotal(index, 2, 'co24')
-    );
-  };
-
   return (
     <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Upload Student Data (Excel file)
+        </label>
+        <input
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={handleFileUpload}
+          className="block w-full text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-md file:border-0
+            file:text-sm file:font-semibold
+            file:bg-blue-50 file:text-blue-700
+            hover:file:bg-blue-100"
+        />
+        <p className="mt-1 text-sm text-gray-500">
+          Excel file should have columns for "Roll No" (or "RollNo"/"Roll Number") and "Name" (or "Student Name")
+        </p>
+      </div>
+
       <div className="mb-6 flex items-center gap-4">
         <label className="flex items-center gap-2">
           <span className="font-medium text-gray-700">Number of Students:</span>
@@ -377,6 +572,61 @@ const AssessmentGrid = ({
 
       {type === 'tca' && (
         <div className="space-y-6">
+          {/* CO Selection Row */}
+          <div className="mb-6 p-4 border rounded-lg shadow-sm bg-gray-50">
+            <h3 className="font-medium text-gray-800 mb-3">CO Mapping</h3>
+            <div className="grid grid-cols-3 gap-6">
+              <div>
+                <h4 className="font-medium text-gray-700 mb-2">Class Test 1 - Question 1</h4>
+                <div className="flex flex-wrap gap-3">
+                  {cos.map((co, idx) => (
+                    <label key={`ct1-q1-${idx}`} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={tcaSelectedCOs[1][`co${idx+1}`]}
+                        onChange={(e) => handleTcaCOChange(1, `co${idx+1}`, e.target.checked)}
+                        className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      <span>{co}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-700 mb-2">Class Test 1 - Question 2</h4>
+                <div className="flex flex-wrap gap-3">
+                  {cos.map((co, idx) => (
+                    <label key={`ct1-q2-${idx}`} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={tcaSelectedCOs[3][`co${idx+1}`]}
+                        onChange={(e) => handleTcaCOChange(3, `co${idx+1}`, e.target.checked)}
+                        className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      <span>{co}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-700 mb-2">Class Test 2 - Question 1</h4>
+                <div className="flex flex-wrap gap-3">
+                  {cos.map((co, idx) => (
+                    <label key={`ct2-q1-${idx}`} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={tcaSelectedCOs[2][`co${idx+1}`]}
+                        onChange={(e) => handleTcaCOChange(2, `co${idx+1}`, e.target.checked)}
+                        className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      <span>{co}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div style={{ overflowX: 'auto', width: '100%' }} className="rounded-lg shadow-sm border border-gray-200">
             <div style={{ minWidth: '1200px' }}>
               <table className="w-full border-collapse">
@@ -396,11 +646,11 @@ const AssessmentGrid = ({
                   <tr>
                     <th className="border-b p-3 bg-gray-50 text-gray-700" style={{ minWidth: '120px' }}>Roll No</th>
                     <th className="border-b p-3 bg-gray-50 text-gray-700" style={{ minWidth: '120px' }}>Name</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center" colSpan="2">CO1</th>
+                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center" colSpan="2">Question 1</th>
                     <th className="border-b p-3 bg-gray-50 text-gray-700 text-center">Total</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center" colSpan="2">CO3</th>
+                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center" colSpan="2">Question 2</th>
                     <th className="border-b p-3 bg-gray-50 text-gray-700 text-center">Total</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center" colSpan="2">CO2+CO4</th>
+                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center" colSpan="2">Question 1</th>
                     <th className="border-b p-3 bg-gray-50 text-gray-700 text-center">Total</th>
                   </tr>
                 </thead>
@@ -423,15 +673,15 @@ const AssessmentGrid = ({
                           className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
                         />
                       </td>
-                      {/* CO1 Marks */}
+                      {/* Class Test 1 - Question 1 */}
                       <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
                         <input
                           type="number"
                           min="0"
                           max="1.5"
                           step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.co1?.part1 || ''}
-                          onChange={(e) => updateTCAMark(index, 1, 'co1', 'part1', e.target.value)}
+                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.marks?.q1p1?.value || ''}
+                          onChange={(e) => updateTCAMark(index, 1, 'q1', 'q1p1', e.target.value)}
                           className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
                         />
                       </td>
@@ -441,49 +691,49 @@ const AssessmentGrid = ({
                           min="0"
                           max="1.5"
                           step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.co1?.part2 || ''}
-                          onChange={(e) => updateTCAMark(index, 1, 'co1', 'part2', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
-                        {calculateTCATotal(index, 1, 'co1')}
-                      </td>
-                      {/* CO3 Marks */}
-                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="1.5"
-                          step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.co3?.part1 || ''}
-                          onChange={(e) => updateTCAMark(index, 1, 'co3', 'part1', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="1.5"
-                          step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.co3?.part2 || ''}
-                          onChange={(e) => updateTCAMark(index, 1, 'co3', 'part2', e.target.value)}
+                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.marks?.q1p2?.value || ''}
+                          onChange={(e) => updateTCAMark(index, 1, 'q1', 'q1p2', e.target.value)}
                           className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
                         />
                       </td>
                       <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
-                        {calculateTCATotal(index, 1, 'co3')}
+                        {calculateTCATotal(index, 1, 1)}
                       </td>
-                      {/* CO2+CO4 Marks */}
+                      {/* Class Test 1 - Question 2 */}
+                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1.5"
+                          step="0.1"
+                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.marks?.q2p1?.value || ''}
+                          onChange={(e) => updateTCAMark(index, 1, 'q2', 'q2p1', e.target.value)}
+                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
+                        />
+                      </td>
+                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1.5"
+                          step="0.1"
+                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.marks?.q2p2?.value || ''}
+                          onChange={(e) => updateTCAMark(index, 1, 'q2', 'q2p2', e.target.value)}
+                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
+                        />
+                      </td>
+                      <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
+                        {calculateTCATotal(index, 1, 3)}
+                      </td>
+                      {/* Class Test 2 - Question 1 */}
                       <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
                         <input
                           type="number"
                           min="0"
                           max="3"
                           step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 2)?.co24?.part1 || ''}
-                          onChange={(e) => updateTCAMark(index, 2, 'co24', 'part1', e.target.value)}
+                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 2)?.marks?.q1p1?.value || ''}
+                          onChange={(e) => updateTCAMark(index, 2, 'q1', 'q1p1', e.target.value)}
                           className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
                         />
                       </td>
@@ -493,13 +743,13 @@ const AssessmentGrid = ({
                           min="0"
                           max="3"
                           step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 2)?.co24?.part2 || ''}
-                          onChange={(e) => updateTCAMark(index, 2, 'co24', 'part2', e.target.value)}
+                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 2)?.marks?.q1p2?.value || ''}
+                          onChange={(e) => updateTCAMark(index, 2, 'q1', 'q1p2', e.target.value)}
                           className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
                         />
                       </td>
                       <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
-                        {calculateTCATotal(index, 2, 'co24')}
+                        {calculateTCATotal(index, 2, 2)}
                       </td>
                       <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
                         {calculateTotalTCAMarks(index)}
@@ -508,6 +758,29 @@ const AssessmentGrid = ({
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+          
+          {/* CO Distribution Summary */}
+          <div className="mt-6 p-4 border rounded-lg shadow-sm bg-gray-50">
+            <h3 className="font-medium text-gray-800 mb-3">CO Distribution Summary</h3>
+            <div className="grid grid-cols-6 gap-4">
+              {cos.map((co, idx) => {
+                const coKey = `co${idx+1}`;
+                // Calculate how many questions use this CO
+                const usedIn = [
+                  tcaSelectedCOs[1][coKey] ? 'CT1-Q1' : null,
+                  tcaSelectedCOs[3][coKey] ? 'CT1-Q2' : null,
+                  tcaSelectedCOs[2][coKey] ? 'CT2-Q1' : null,
+                ].filter(Boolean);
+                
+                return (
+                  <div key={coKey} className="p-3 border rounded-md bg-white shadow-sm">
+                    <h4 className="font-medium text-blue-600">{co}</h4>
+                    <p className="text-sm text-gray-600 mt-1">Used in: {usedIn.length ? usedIn.join(', ') : 'None'}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
