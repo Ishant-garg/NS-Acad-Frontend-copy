@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, Upload, Loader2 } from "lucide-react";
-import { getCurrentUser } from '../utils/auth';
+import { getCurrentUser } from '../../../utils/auth';
 import './Loader.css';
 import axios from 'axios'
 

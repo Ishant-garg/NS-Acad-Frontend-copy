@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { fetchUserData, logout } from './utils/auth';
-import SideBar from './Components/SideBar';
 import Home from './Pages/Home';
 import Login from './Authentication/Login';
 import Register from './Authentication/Register';
-import Navbar from './Components/Navbar';
 import Query from './Components/HOD/Dashboard';
 import './App.css'
 import FacultyDetails from './Components/HOD/FacultyDetails';
-import Profile from './Components/Profile';
 import CoAnalysis from './Pages/Faculty/COPO/CoAnalysis';
+import SideBar from './Components/Faculty/Performance/SideBar';
+import Navbar from './Components/Faculty/Performance/Navbar';
+import Profile from './Components/Faculty/Performance/Profile';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const [user, setUser] = useState(null);

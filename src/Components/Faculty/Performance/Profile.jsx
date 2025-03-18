@@ -10,8 +10,8 @@ import {
   GraduationCap,
   Trash2
 } from 'lucide-react';
-import { fetchUserData } from '../utils/auth';
-import api from '../utils/api';
+import { fetchUserData } from '../../../utils/auth';
+import api from '../../../utils/api';
 
 const Profile = () => {
   const [userData, setUserData] = useState(null);
