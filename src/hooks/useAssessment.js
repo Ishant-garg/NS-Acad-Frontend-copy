@@ -5,7 +5,7 @@ export const useAssessment = () => {
   const [formData, setFormData] = useState({
     branch: '',
     section: '',
-    courseCode: '',
+    subjectCode: '',
     numberOfCopos: 0
   });
 
@@ -25,6 +25,7 @@ export const useAssessment = () => {
     const fetchClasses = async () => {
       try {
         const response = await api.get('/read/classes');
+        // console.log("Classes data", response.data);
         setClassesData(response.data);
         setLoading(false);
       } catch (err) {
@@ -44,22 +45,34 @@ export const useAssessment = () => {
   };
 
   const getUniqueBranches = () => {
-    return Array.from(new Set(classesData.map(cls => cls.branch)));
+    return Array.from(new Set(classesData?.map(cls => cls.branch) || []));
   };
-
+  
   const getSections = (selectedBranch) => {
     return Array.from(new Set(
-      classesData
-        .filter(cls => cls.branch === selectedBranch)
+      (classesData?.filter(cls => cls.branch === selectedBranch) || [])
         .map(cls => cls.section)
     ));
   };
+  
+  const getSubjects = (selectedBranch, selectedSection) => {
+    const selectedClass = classesData?.find(cls => 
+      cls.branch === selectedBranch && cls.section === selectedSection
+    );
+    console.log(selectedClass.subjects);
+    return selectedClass?.subjects || [];
+  };
+  
 
   const updateFormData = (field, value) => {
+    console.log(field, value);
     setFormData(prev => {
       const newData = { ...prev, [field]: value };
       if (field === 'branch') {
         newData.section = '';
+        newData.subjectCode = '';
+      } else if (field === 'section') {
+        newData.subjectCode = '';
       }
       return newData;
     });
@@ -182,6 +195,7 @@ export const useAssessment = () => {
     students,
     getUniqueBranches,
     getSections,
+    getSubjects,
     updateFormData,
     updateAssessmentQuestions,
     updateQuestionParts,

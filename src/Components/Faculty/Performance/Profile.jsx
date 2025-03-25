@@ -169,14 +169,32 @@ const AddClassModal = ({ isOpen, onClose, userId, onClassAdded }) => {
   const [branch, setBranch] = useState('');
   const [section, setSection] = useState('');
   const [year, setYear] = useState('');
+  const [subjects, setSubjects] = useState([{ code: '', name: '' }]);
 
   const branches = ["CSE", "ECE", "ME", "Civil"];
   const sections = ["1", "2", "3"];
   const years = [2025, 2026, 2027, 2028, 2029, 2030];
 
+  const addSubject = () => {
+    setSubjects([...subjects, { code: '', name: '' }]);
+  };
+
+  const handleSubjectChange = (index, field, value) => {
+    const updatedSubjects = [...subjects];
+    updatedSubjects[index][field] = value;
+    setSubjects(updatedSubjects);
+  };
+
+  const removeSubject = (index) => {
+    const updatedSubjects = subjects.filter((_, i) => i !== index);
+    setSubjects(updatedSubjects);
+  };
+
+
   const handleAddClass = async () => {
     try {
-      await api.post('/auth/addClass', { userId, branch, section, year });
+      const filteredSubjects = subjects.filter(s => s.code && s.name);
+      await api.post('/auth/addClass', { userId, branch, section, year, subjects: filteredSubjects });
       await onClassAdded();
       onClose();
     } catch (error) {
@@ -188,7 +206,7 @@ const AddClassModal = ({ isOpen, onClose, userId, onClassAdded }) => {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">Add New Class</h2>
           <button 
@@ -239,6 +257,45 @@ const AddClassModal = ({ isOpen, onClose, userId, onClassAdded }) => {
           </div>
         </div>
 
+        <div className="mt-6">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-medium text-gray-700">Subjects</h3>
+            <button 
+              type="button"
+              onClick={addSubject}
+              className="text-blue-600 hover:text-blue-800"
+            >
+              <PlusCircle className="w-5 h-5" />
+            </button>
+          </div>
+          
+          {subjects.map((subject, index) => (
+            <div key={index} className="flex items-center space-x-2 mb-2">
+              <input
+                type="text"
+                placeholder="Code (e.g. CS101)"
+                value={subject.code}
+                onChange={(e) => handleSubjectChange(index, 'code', e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+              />
+              <input
+                type="text"
+                placeholder="Subject Name"
+                value={subject.name}
+                onChange={(e) => handleSubjectChange(index, 'name', e.target.value)}
+                className="flex-2 px-3 py-2 border border-gray-300 rounded-lg"
+              />
+              <button
+                type="button"
+                onClick={() => removeSubject(index)}
+                className="text-red-500 hover:text-red-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          ))}
+        </div>
+        
         <div className="mt-6 flex space-x-3">
           <button 
             className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors duration-200"
@@ -257,5 +314,6 @@ const AddClassModal = ({ isOpen, onClose, userId, onClassAdded }) => {
     </div>
   );
 };
+
 
 export default Profile;

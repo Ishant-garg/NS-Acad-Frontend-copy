@@ -1,4 +1,3 @@
-
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAssessment } from '../../../hooks/useAssessment';
@@ -11,13 +10,17 @@ const AssessmentForm = () => {
     loading,
     error,
     assessmentConfig,
+    studentMarks,
+    students,
     getUniqueBranches,
     getSections,
+    getSubjects,
     updateFormData,
+    updateAssessmentQuestions,
     updateQuestionParts,
     updatePartDetails,
-    updateStudent,
     updateStudentMark,
+    updateStudent,
     calculateStudentTotal,
     calculateCOTotal,
     calculateMaxCOMarks
@@ -54,6 +57,7 @@ const AssessmentForm = () => {
             formData={formData}
             getUniqueBranches={getUniqueBranches}
             getSections={getSections}
+            getSubjects={getSubjects}
             updateFormData={updateFormData}
           />
 
