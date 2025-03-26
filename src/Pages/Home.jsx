@@ -88,12 +88,12 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
               Add New Entry
             </div>
           </AlertDialogTrigger>
-          <AlertDialogContent className="sm:max-w-xl">
+          <AlertDialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-xl font-bold text-slate-900">
                 Add New Entry
               </AlertDialogTitle>
-              <AlertDialogDescription>
+              <AlertDialogDescription className="max-h-[70vh] overflow-y-auto pr-2">
                 {isLoading ? (
                   <div className="flex items-center justify-center p-8">
                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />

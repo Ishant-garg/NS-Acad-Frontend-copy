@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { AlertCircle, Upload, Loader2 } from "lucide-react";
+import { useEffect, useState, useMemo } from 'react';
+import { AlertCircle, Upload, Loader2, Calendar } from "lucide-react";
 import { getCurrentUser } from '../../../utils/auth';
 import './Loader.css';
-import axios from 'axios'
+import axios from 'axios';
+import PropTypes from 'prop-types';
 
 const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
   const [fields, setFields] = useState([]);
@@ -14,8 +15,15 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
   const [warningMessage, setWarningMessage] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [formErrors, setFormErrors] = useState({});
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   
   const user = getCurrentUser();
+
+  // Generate a list of academic years (current year and 5 previous years)
+  const academicYears = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 6 }, (_, i) => currentYear - i);
+  }, []);
 
   useEffect(() => {
     setFields(pageFields);
@@ -32,7 +40,11 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
     setFormErrors(prev => ({ ...prev, [field]: '' }));
   };
 
-  const handleFileInputChange = (e, field) => {
+  const handleYearChange = (e) => {
+    setSelectedYear(parseInt(e.target.value));
+  };
+
+  const handleFileInputChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
@@ -120,7 +132,8 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
   const handleSubmit = () => {
     if (validateForm()) {
       const dataArray = Object.entries(formData).map(([field, value]) => ({ [field]: value }));
-      submitFormData(dataArray, uploadedFileID);
+      // Pass the selected year to the submit function
+      submitFormData(dataArray, uploadedFileID, selectedYear);
     } else {
       setWarningMessage("Please fill all required fields and upload a file");
     }
@@ -139,6 +152,32 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
       <h2 className="text-2xl font-bold text-gray-800 mb-8">
         Please fill out all required fields and upload the supporting document
       </h2>
+
+      {/* Academic Year selection */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Calendar className="h-5 w-5 text-indigo-600" />
+          <label htmlFor="academicYear" className="block text-base font-medium text-gray-700">
+            Academic Year
+          </label>
+        </div>
+        <select
+          id="academicYear"
+          name="academicYear"
+          value={selectedYear}
+          onChange={handleYearChange}
+          className="mt-1 block w-full max-w-xs text-black bg-white border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
+        >
+          {academicYears.map((year) => (
+            <option key={year} value={year}>
+              {year - 1} - {year}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-sm text-gray-500">
+          Academic year runs from July {selectedYear - 1} to June {selectedYear}
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {fields.map((item, index) => (
@@ -188,7 +227,7 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
             name="fileUploaded"
             id="fileUploaded"
             accept=".pdf"
-            onChange={(e) => handleFileInputChange(e, 'fileUploaded')}
+            onChange={(e) => handleFileInputChange(e)}
             className="block w-full text-sm text-gray-500
               file:mr-4 file:py-2 file:px-4
               file:rounded-full file:border-0
@@ -199,79 +238,76 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
             disabled={isUploading}
           />
         </div>
-      </div>
-
-      <div className="mt-1 flex items-center justify-between text-indigo-700">
-        <button 
-          className={`
-            px-8 py-2
-            text-sm font-medium
-            bg-indigo-100
-            rounded-md
-            border-2
-            shadow-sm
-            transition-all duration-150 ease-in-out
-            focus:outline-none focus:ring-2 focus:ring-offset-2
-            ${isUploading 
-              ? 'text-indigo-700 bg-indigo-100 cursor-not-allowed' 
-              : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-            }
-            w-36
-          `}
-          onClick={sendFile}
-          disabled={isUploading}
-        >
-          {isUploading ? (
-            <span className="flex items-center">
-              <Loader2 className="animate-spin mr-2 h-4 w-4" />
-              Uploading...
-            </span>
-          ) : (
-            <span className="flex items-center justify-center text-white font-extrabold">
-              <Upload className="mr-2 h-6 w-6 " />
-              Upload File
-            </span>
-          )}
-        </button>
-
-        {isUploading && (
-          <div className="flex items-center">
-            <span className="text-sm text-gray-500 mr-2">{uploadProgress}%</span>
-            <div className="w-32 bg-gray-200 rounded-full h-2.5">
-              <div 
-                className="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" 
-                style={{ width: `${uploadProgress}%` }}
-              />
-            </div>
+        {formErrors.fileUpload && !uploadedFileID && (
+          <p className="mt-1 text-sm text-red-600 font-medium">{formErrors.fileUpload}</p>
+        )}
+        {warningMessage && (
+          <div className="mt-2 flex items-center text-sm text-red-600">
+            <AlertCircle className="mr-1 h-4 w-4" />
+            <span>{warningMessage}</span>
+          </div>
+        )}
+        {fileData && !uploadedFileID && (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={sendFile}
+              disabled={isUploading}
+              className={`flex items-center px-4 py-2 text-sm font-medium text-white ${
+                isUploading ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
+              } rounded-md focus:outline-none`}
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Uploading ({uploadProgress}%)
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Upload
+                </>
+              )}
+            </button>
+          </div>
+        )}
+        {uploadedFileID && (
+          <div className="mt-2 text-sm text-green-600 font-medium flex items-center">
+            <div className="w-3 h-3 bg-green-600 rounded-full mr-2"></div>
+            File uploaded successfully
           </div>
         )}
       </div>
 
-      {(warningMessage || formErrors.fileUpload) && (
-        <div className="mt-2 flex items-center text-red-600">
-          <AlertCircle className="h-4 w-4 mr-2" />
-          <p className="text-sm">{warningMessage || formErrors.fileUpload}</p>
-        </div>
-      )}
-
-      <div className="mt-1 flex justify-center space-x-4 w-full text-white">
-        <button 
-          className="px-6 py-2 w-[10vw] border-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors duration-150"
+      <div className="mt-6 flex items-center justify-end gap-4">
+        <button
+          type="button"
           onClick={() => cancel(uploadedFileID)}
-          disabled={isUploading}
+          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
         >
           Cancel
         </button>
-        <button 
-          className="px-6 py-2 w-[10vw] border-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors duration-150"
+        <button
+          type="button"
           onClick={handleSubmit}
           disabled={isUploading}
+          className={`px-4 py-2 text-sm font-medium text-white ${
+            isUploading ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
+          } rounded-md focus:outline-none`}
         >
           Submit
         </button>
       </div>
     </div>
   );
+};
+
+// Add prop validation
+Form.propTypes = {
+  pageFields: PropTypes.array.isRequired,
+  submitFormData: PropTypes.func.isRequired,
+  cancel: PropTypes.func.isRequired,
+  isLoading: PropTypes.bool
 };
 
 export default Form;
