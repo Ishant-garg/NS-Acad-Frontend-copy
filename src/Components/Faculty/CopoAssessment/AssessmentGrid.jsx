@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 
-const AssessmentGrid = ({ 
+const AssessmentGrid = ({
   type, // 'tms', 'TCA', or 'TES'
-  assessmentNumber, // For TCA (1,2,3)
+  assessmentNumber, // For TCA (1,2,3) - Note: TCA structure seems fixed to 1 and 2 in the code
   tmsType, // For tms ('Tutorial', 'MiniProject', 'SurpriseTest')
-  config,
+  config, // Can hold max marks, weightage etc. passed from parent
   subjectCode,
   subjectName,
   branch,
@@ -16,205 +16,425 @@ const AssessmentGrid = ({
   facultyId
 }) => {
   const [saveStatus, setSaveStatus] = useState('');
-  const [numberOfStudents, setNumberOfStudents] = useState(20);
+  const [loading, setLoading] = useState(false); // Added loading state
+  const [numberOfStudents, setNumberOfStudents] = useState(0); // Start with 0, update on fetch/upload
   const [students, setStudents] = useState([]);
-  const [assessmentData, setAssessmentData] = useState(null);
-  const [selectedCOs, setSelectedCOs] = useState({
-    1: { partA: 'CO1', partB: 'CO1', partC: 'CO1' },
-    2: { partA: 'CO1', partB: 'CO1', partC: 'CO1' },
-    3: { partA: 'CO1', partB: 'CO1', partC: 'CO1' },
-    4: { partA: 'CO1', partB: 'CO1', partC: 'CO1' },
-    5: { partA: 'CO1', partB: 'CO1', partC: 'CO1' }
+  // Initial default CO selections (can be overridden by fetched data)
+  const [selectedCOs, setSelectedCOs] = useState(() => {
+      const initial = {};
+      for (let i = 1; i <= 5; i++) {
+          initial[i] = { partA: 'CO1', partB: 'CO1', partC: 'CO1' };
+      }
+      return initial;
   });
   const [tcaSelectedCOs, setTcaSelectedCOs] = useState({
-    1: { co1: true, co2: false, co3: false, co4: false, co5: false, co6: false },
-    2: { co1: false, co2: true, co3: false, co4: true, co5: false, co6: false },
-    3: { co1: false, co2: false, co3: true, co4: false, co5: false, co6: false }
+    1: { co1: true, co2: false, co3: false, co4: false, co5: false, co6: false }, // CT1-Q1
+    3: { co1: false, co2: false, co3: true, co4: false, co5: false, co6: false }, // CT1-Q2 (Using key 3 for uniqueness)
+    2: { co1: false, co2: true, co3: false, co4: true, co5: false, co6: false }  // CT2-Q1 (Using key 2)
   });
 
   const cos = ['CO1', 'CO2', 'CO3', 'CO4', 'CO5', 'CO6'];
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // --- Data Initialization ---
+  const initializeStudentMarks = useCallback((student) => {
+    const newStudent = { ...student, marks: student.marks || {} }; // Ensure marks obj exists
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const data = evt.target.result;
-      const workbook = XLSX.read(data, { type: 'array' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const excelData = XLSX.utils.sheet_to_json(firstSheet);
-      
-      const updatedStudents = excelData.map(row => {
-        const student = {
-          rollNo: row['Roll No'] || row['RollNo'] || row['Roll Number'] || '',
-          name: row['Name'] || row['Student Name'] || '',
-          marks: {}
-        };
+    if (type === 'tms') {
+      if (!newStudent.tmsMarks || newStudent.tmsMarks.length === 0) {
+        newStudent.tmsMarks = [{
+          type: tmsType,
+          questions: Array(5).fill().map((_, idx) => ({
+            partA: { maxMarks: 5, coNumber: selectedCOs[idx + 1]?.partA || 'CO1', marksObtained: undefined },
+            partB: { maxMarks: 5, coNumber: selectedCOs[idx + 1]?.partB || 'CO1', marksObtained: undefined }
+          }))
+        }];
+      }
+       // Ensure each question/part exists even if data is partially loaded
+      newStudent.tmsMarks[0].questions = newStudent.tmsMarks[0].questions || [];
+       for(let i = 0; i < 5; i++) {
+         if (!newStudent.tmsMarks[0].questions[i]) {
+           newStudent.tmsMarks[0].questions[i] = {
+             partA: { maxMarks: 5, coNumber: selectedCOs[i + 1]?.partA || 'CO1', marksObtained: undefined },
+             partB: { maxMarks: 5, coNumber: selectedCOs[i + 1]?.partB || 'CO1', marksObtained: undefined }
+           };
+         } else {
+            newStudent.tmsMarks[0].questions[i].partA = newStudent.tmsMarks[0].questions[i].partA || { maxMarks: 5, coNumber: selectedCOs[i + 1]?.partA || 'CO1', marksObtained: undefined };
+            newStudent.tmsMarks[0].questions[i].partB = newStudent.tmsMarks[0].questions[i].partB || { maxMarks: 5, coNumber: selectedCOs[i + 1]?.partB || 'CO1', marksObtained: undefined };
+         }
+       }
 
-        if (type === 'tms') {
-          student.tmsMarks = [{
-            type: tmsType,
-            questions: Array(5).fill().map((_, idx) => ({
-              partA: { maxMarks: 5, coNumber: selectedCOs[idx + 1].partA },
-              partB: { maxMarks: 5, coNumber: selectedCOs[idx + 1].partB }
-            }))
-          }];
-        } else if (type === 'tes') {
-          student.tesMarks = [{
-            questions: Array(5).fill().map((_, idx) => ({
-              partA: { maxMarks: 7, coNumber: selectedCOs[idx + 1].partA },
-              partB: { maxMarks: 7, coNumber: selectedCOs[idx + 1].partB },
-              partC: { maxMarks: 6, coNumber: selectedCOs[idx + 1].partC }
-            }))
-          }];
-        } else if (type === 'tca') {
-          student.tcaMarks = [
-            { assessmentNumber: 1, marks: {} },
-            { assessmentNumber: 2, marks: {} }
-          ];
+    } else if (type === 'tes') {
+      if (!newStudent.tesMarks || newStudent.tesMarks.length === 0) {
+        newStudent.tesMarks = [{
+          questions: Array(5).fill().map((_, idx) => ({
+            partA: { maxMarks: 7, coNumber: selectedCOs[idx + 1]?.partA || 'CO1', marksObtained: undefined },
+            partB: { maxMarks: 7, coNumber: selectedCOs[idx + 1]?.partB || 'CO1', marksObtained: undefined },
+            partC: { maxMarks: 6, coNumber: selectedCOs[idx + 1]?.partC || 'CO1', marksObtained: undefined }
+          }))
+        }];
+      }
+      // Ensure structure exists
+      newStudent.tesMarks[0].questions = newStudent.tesMarks[0].questions || [];
+      for(let i = 0; i < 5; i++) {
+          if (!newStudent.tesMarks[0].questions[i]) {
+              newStudent.tesMarks[0].questions[i] = {
+                  partA: { maxMarks: 7, coNumber: selectedCOs[i + 1]?.partA || 'CO1', marksObtained: undefined },
+                  partB: { maxMarks: 7, coNumber: selectedCOs[i + 1]?.partB || 'CO1', marksObtained: undefined },
+                  partC: { maxMarks: 6, coNumber: selectedCOs[i + 1]?.partC || 'CO1', marksObtained: undefined }
+              };
+          } else {
+              newStudent.tesMarks[0].questions[i].partA = newStudent.tesMarks[0].questions[i].partA || { maxMarks: 7, coNumber: selectedCOs[i + 1]?.partA || 'CO1', marksObtained: undefined };
+              newStudent.tesMarks[0].questions[i].partB = newStudent.tesMarks[0].questions[i].partB || { maxMarks: 7, coNumber: selectedCOs[i + 1]?.partB || 'CO1', marksObtained: undefined };
+              newStudent.tesMarks[0].questions[i].partC = newStudent.tesMarks[0].questions[i].partC || { maxMarks: 6, coNumber: selectedCOs[i + 1]?.partC || 'CO1', marksObtained: undefined };
+          }
+      }
+    } else if (type === 'tca') {
+        if (!newStudent.tcaMarks) {
+            newStudent.tcaMarks = [];
+        }
+        // Ensure both assessments structure exist
+        let ct1 = newStudent.tcaMarks.find(m => m.assessmentNumber === 1);
+        if (!ct1) {
+            ct1 = { assessmentNumber: 1, marks: {} };
+            newStudent.tcaMarks.push(ct1);
+        } else {
+             ct1.marks = ct1.marks || {}; // Ensure marks object exists
         }
 
-        return student;
-      }).filter(student => student.rollNo && student.name);
+        let ct2 = newStudent.tcaMarks.find(m => m.assessmentNumber === 2);
+        if (!ct2) {
+            ct2 = { assessmentNumber: 2, marks: {} };
+            newStudent.tcaMarks.push(ct2);
+        } else {
+             ct2.marks = ct2.marks || {}; // Ensure marks object exists
+        }
 
-      setStudents(updatedStudents);
-      setNumberOfStudents(updatedStudents.length);
-    };
-    
-    reader.readAsArrayBuffer(file);
-  };
+        // Ensure specific part structures exist (optional, handled in updateTCAMark too)
+        const partsToEnsure = ['q1p1', 'q1p2', 'q2p1', 'q2p2']; // CT1 parts
+        partsToEnsure.forEach(part => {
+            if (!ct1.marks[part]) ct1.marks[part] = { value: undefined, coDistribution: {} };
+        });
+        const partsToEnsureCt2 = ['q1p1', 'q1p2']; // CT2 parts
+        partsToEnsureCt2.forEach(part => {
+            if (!ct2.marks[part]) ct2.marks[part] = { value: undefined, coDistribution: {} };
+        });
+    }
 
-  const fetchAssessmentData = async () => {
+    return newStudent;
+  }, [type, tmsType, selectedCOs]); // Dependencies for initialization logic
+
+
+  // --- Fetch Data ---
+  const fetchAssessmentData = useCallback(async () => {
+    if (!facultyId || !subjectCode || !academicYear || !semester || !branch || !section || !type) {
+        console.log("Missing necessary info for fetch");
+        return; // Don't fetch if essential props are missing
+    }
+    setLoading(true);
+    setSaveStatus('');
     try {
-      const response = await axios.get(`/course-assessment/${facultyId}`, {
-        params: {
-          type,
-          assessmentNumber,
-          tmsType,
-          subjectCode,
-          branch,
-          section,
-          semester,
-          academicYear
+      const params = {
+        type,
+        subjectCode,
+        branch,
+        section,
+        semester,
+        academicYear,
+      };
+      if (type === 'tca') {
+        // TCA data is usually fetched as a whole, not per assessmentNumber,
+        // as the grid shows both CT1 and CT2. We'll filter/find specific assessment data later if needed.
+        // If your backend *requires* assessmentNumber for GET, adjust this.
+      } else if (type === 'tms' && tmsType) {
+        params.tmsType = tmsType;
+      }
+
+      // Corrected URL
+      const response = await axios.get(`http://localhost:8000/api/assessments/${facultyId}`, { params });
+
+      if (response.data) {
+        const fetchedData = response.data;
+        setAssessmentData(fetchedData); // Store the raw fetched data if needed elsewhere
+
+        // Populate CO selections from fetched config if available
+        if (type === 'tms' && fetchedData.tmsConfig?.coMapping) {
+          const newSelectedCOs = { ...selectedCOs };
+          fetchedData.tmsConfig.coMapping.forEach(map => {
+            if (newSelectedCOs[map.questionNumber]) {
+              newSelectedCOs[map.questionNumber].partA = map.partA.coNumber;
+              newSelectedCOs[map.questionNumber].partB = map.partB.coNumber;
+            }
+          });
+          setSelectedCOs(newSelectedCOs);
+        } else if (type === 'tes' && fetchedData.tesConfig?.coMapping) {
+          const newSelectedCOs = { ...selectedCOs };
+           fetchedData.tesConfig.coMapping.forEach(map => {
+            if (newSelectedCOs[map.questionNumber]) {
+              newSelectedCOs[map.questionNumber].partA = map.partA.coNumber;
+              newSelectedCOs[map.questionNumber].partB = map.partB.coNumber;
+              if (map.partC) { // Check if partC exists
+                 newSelectedCOs[map.questionNumber].partC = map.partC.coNumber;
+              }
+            }
+          });
+          setSelectedCOs(newSelectedCOs);
+        } else if (type === 'tca' && fetchedData.tcaConfig?.assessments) {
+            const newTcaSelectedCOs = { ...tcaSelectedCOs };
+            // Helper to parse CO string like "CO1+CO2" into the state format
+            const parseCOString = (coStr) => {
+                const selected = { co1: false, co2: false, co3: false, co4: false, co5: false, co6: false };
+                if (coStr) {
+                    coStr.split('+').forEach(co => {
+                        const key = co.toLowerCase(); // co1, co2 etc.
+                        if (selected.hasOwnProperty(key)) {
+                            selected[key] = true;
+                        }
+                    });
+                }
+                return selected;
+            };
+
+            fetchedData.tcaConfig.assessments.forEach(asm => {
+                 asm.questions?.forEach(q => {
+                    if (asm.assessmentNumber === 1) {
+                        if (q.questionNumber === 1) newTcaSelectedCOs[1] = parseCOString(q.coNumber);
+                        if (q.questionNumber === 2) newTcaSelectedCOs[3] = parseCOString(q.coNumber); // Key 3 for CT1-Q2
+                    } else if (asm.assessmentNumber === 2) {
+                        if (q.questionNumber === 1) newTcaSelectedCOs[2] = parseCOString(q.coNumber); // Key 2 for CT2-Q1
+                    }
+                 });
+            });
+            setTcaSelectedCOs(newTcaSelectedCOs);
         }
-      });
-      setAssessmentData(response.data);
-      if (response.data.students) {
-        setStudents(response.data.students);
-        setNumberOfStudents(response.data.students.length);
+
+        // Initialize marks structure for each student from fetched data
+        const initializedStudents = fetchedData.students?.map(initializeStudentMarks) || [];
+        setStudents(initializedStudents);
+        setNumberOfStudents(initializedStudents.length || 0); // Set count based on fetched data
+
+      } else {
+        // No data found, initialize with empty students based on count?
+        // Or just show 0 students until uploaded/added manually.
+        // Let's clear existing state if fetch returns null.
+        setStudents([]);
+        setNumberOfStudents(0);
+        setAssessmentData(null);
+        // Reset COs to default if desired when no data is found
+        // setSelectedCOs(...)
+        // setTcaSelectedCOs(...)
       }
     } catch (error) {
       console.error('Error fetching assessment data:', error);
+      setSaveStatus('Error fetching data');
+      setStudents([]); // Clear students on error
+      setNumberOfStudents(0);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [facultyId, type, assessmentNumber, tmsType, subjectCode, branch, section, semester, academicYear, initializeStudentMarks]); // Added initializeStudentMarks
 
   useEffect(() => {
     fetchAssessmentData();
-  }, [facultyId, type, assessmentNumber, tmsType]);
+  }, [fetchAssessmentData]); // Use the memoized fetch function
 
+
+  // --- File Upload ---
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+          const data = evt.target.result;
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          // Explicitly ask for raw values to avoid potential date issues
+          const excelData = XLSX.utils.sheet_to_json(firstSheet, { raw: true });
+
+          const uploadedStudents = excelData.map(row => {
+            // Handle potential variations in column names (case-insensitive)
+            const rollNoKey = Object.keys(row).find(key => key.toLowerCase().replace(/\s+/g, '') === 'rollno' || key.toLowerCase().replace(/\s+/g, '') === 'rollnumber');
+            const nameKey = Object.keys(row).find(key => key.toLowerCase().replace(/\s+/g, '') === 'name' || key.toLowerCase().replace(/\s+/g, '') === 'studentname');
+
+            const student = {
+              // Convert roll number to string to handle potential numeric formatting issues
+              rollNo: rollNoKey ? String(row[rollNoKey]).trim() : '',
+              name: nameKey ? String(row[nameKey]).trim() : '',
+              // Initialize marks structure using the helper
+            };
+             return initializeStudentMarks(student); // Use the init helper
+          }).filter(student => student.rollNo && student.name); // Filter valid students
+
+          setStudents(uploadedStudents);
+          setNumberOfStudents(uploadedStudents.length);
+          setSaveStatus('Student list populated from file.');
+          setTimeout(() => setSaveStatus(''), 3000);
+      } catch (error) {
+          console.error("Error processing Excel file:", error);
+          setSaveStatus('Error reading file.');
+          setTimeout(() => setSaveStatus(''), 3000);
+      } finally {
+          setLoading(false);
+      }
+    };
+    reader.onerror = (error) => {
+        console.error("File reading error:", error);
+        setSaveStatus('Error reading file.');
+        setLoading(false);
+    }
+    reader.readAsArrayBuffer(file);
+     // Clear the file input value so the same file can be uploaded again if needed
+     e.target.value = null;
+  };
+
+
+  // --- UI Handlers ---
   const handleStudentCountChange = (e) => {
     const count = parseInt(e.target.value) || 0;
-    setNumberOfStudents(Math.max(1, Math.min(count, 100)));
+    const newCount = Math.max(0, Math.min(count, 150)); // Allow 0, max 150
+    setNumberOfStudents(newCount);
+
+    // Adjust students array size
+    setStudents(prevStudents => {
+      const currentStudents = [...prevStudents];
+      if (newCount > currentStudents.length) {
+        // Add new empty student objects, initialized
+        for (let i = currentStudents.length; i < newCount; i++) {
+          currentStudents.push(initializeStudentMarks({ rollNo: '', name: '' }));
+        }
+      } else {
+        // Remove students from the end
+        currentStudents.length = newCount;
+      }
+      return currentStudents;
+    });
   };
 
   const updateStudent = (index, field, value) => {
-    const updatedStudents = [...students];
-    if (!updatedStudents[index]) {
-      updatedStudents[index] = {};
-    }
-    updatedStudents[index][field] = value;
-    setStudents(updatedStudents);
+    setStudents(prevStudents => {
+      const updatedStudents = [...prevStudents];
+      if (!updatedStudents[index]) {
+        // Should ideally not happen if count change initializes correctly
+        updatedStudents[index] = initializeStudentMarks({ rollNo: '', name: '' });
+      }
+      updatedStudents[index] = { ...updatedStudents[index], [field]: value };
+      return updatedStudents;
+    });
   };
 
+  // Update TMS or TES marks
   const updateStudentMark = (index, field, value) => {
-    const updatedStudents = [...students];
-    if (!updatedStudents[index]) {
-      updatedStudents[index] = { marks: {} };
-    }
-    
-    switch (type) {
-      case 'tms':
-        if (!updatedStudents[index].tmsMarks) {
-          updatedStudents[index].tmsMarks = [];
-        }
-        const [questionNum, part] = field.split('-');
-        if (!updatedStudents[index].tmsMarks[0]) {
-          updatedStudents[index].tmsMarks[0] = {
-            type: tmsType,
-            questions: Array(5).fill().map((_, idx) => ({
-              partA: { maxMarks: 5, coNumber: selectedCOs[idx + 1].partA },
-              partB: { maxMarks: 5, coNumber: selectedCOs[idx + 1].partB }
-            }))
-          };
-        }
-        
-        const questionData = updatedStudents[index].tmsMarks[0].questions[questionNum - 1];
-        if (part === 'A' || part === 'B') {
-          questionData[`part${part}`].marksObtained = value ? Number(value) : undefined;
-          questionData[`part${part}`].coNumber = selectedCOs[questionNum][`part${part}`];
-        }
-        break;
-        
-      case 'tes':
-        if (!updatedStudents[index].tesMarks) {
-          updatedStudents[index].tesMarks = [];
-        }
-        const [qNum, prt] = field.split('-');
-        if (!updatedStudents[index].tesMarks[0]) {
-          updatedStudents[index].tesMarks[0] = {
-            questions: Array(5).fill().map((_, idx) => ({
-              partA: { maxMarks: 7, coNumber: selectedCOs[idx + 1].partA },
-              partB: { maxMarks: 7, coNumber: selectedCOs[idx + 1].partB },
-              partC: { maxMarks: 6, coNumber: selectedCOs[idx + 1].partC }
-            }))
-          };
-        }
-        
-        const qData = updatedStudents[index].tesMarks[0].questions[qNum - 1];
-        if (prt === 'A' || prt === 'B' || prt === 'C') {
-          qData[`part${prt}`].marksObtained = value ? Number(value) : undefined;
-          qData[`part${prt}`].coNumber = selectedCOs[qNum][`part${prt}`];
-        }
-        break;
-        
-      case 'tca':
-        if (!updatedStudents[index].tcaMarks) {
-          updatedStudents[index].tcaMarks = [
-            { assessmentNumber: 1, marks: {} },
-            { assessmentNumber: 2, marks: {} }
-          ];
-        }
-        const tcaIndex = updatedStudents[index].tcaMarks.findIndex(
-          m => m.assessmentNumber === assessmentNumber
-        );
-        if (tcaIndex === -1) {
-          updatedStudents[index].tcaMarks.push({
-            assessmentNumber,
-            marks: {}
-          });
+    // Field format: "questionNum-Part" e.g., "1-A"
+    const [questionNumStr, part] = field.split('-');
+    const questionNum = parseInt(questionNumStr, 10);
+    const questionIndex = questionNum - 1;
+
+    setStudents(prevStudents => {
+        const updatedStudents = [...prevStudents];
+        if (!updatedStudents[index]) return prevStudents; // Should not happen
+
+        // Ensure the student has the correct marks structure (using initializer is robust)
+        let student = updatedStudents[index];
+        if ((type === 'tms' && !student.tmsMarks?.[0]?.questions?.[questionIndex]) ||
+            (type === 'tes' && !student.tesMarks?.[0]?.questions?.[questionIndex])) {
+            student = initializeStudentMarks(student); // Re-initialize if structure is missing
         }
 
-        const [questionIndex, partIndex] = field.split('-').map(Number);
-        const currentTCA = updatedStudents[index].tcaMarks.find(
-          m => m.assessmentNumber === assessmentNumber
-        );
-        if (!currentTCA.marks[questionIndex]) {
-          currentTCA.marks[questionIndex] = { parts: [] };
+        const marksValue = value === '' ? undefined : Number(value);
+
+        if (type === 'tms') {
+            const tmsMark = student.tmsMarks[0].questions[questionIndex];
+            if (part === 'A' && tmsMark?.partA) {
+                tmsMark.partA.marksObtained = marksValue;
+                tmsMark.partA.coNumber = selectedCOs[questionNum]?.partA || 'CO1'; // Ensure CO is set
+            } else if (part === 'B' && tmsMark?.partB) {
+                tmsMark.partB.marksObtained = marksValue;
+                tmsMark.partB.coNumber = selectedCOs[questionNum]?.partB || 'CO1';
+            }
+        } else if (type === 'tes') {
+            const tesMark = student.tesMarks[0].questions[questionIndex];
+            if (part === 'A' && tesMark?.partA) {
+                tesMark.partA.marksObtained = marksValue;
+                tesMark.partA.coNumber = selectedCOs[questionNum]?.partA || 'CO1';
+            } else if (part === 'B' && tesMark?.partB) {
+                tesMark.partB.marksObtained = marksValue;
+                tesMark.partB.coNumber = selectedCOs[questionNum]?.partB || 'CO1';
+            } else if (part === 'C' && tesMark?.partC) {
+                tesMark.partC.marksObtained = marksValue;
+                tesMark.partC.coNumber = selectedCOs[questionNum]?.partC || 'CO1';
+            }
         }
-        currentTCA.marks[questionIndex].parts[partIndex] = {
-          partNumber: partIndex + 1,
-          marksObtained: Number(value),
-          maxMarks: config.questions[questionIndex].parts[partIndex].maxMarks,
-          coNumber: config.questions[questionIndex].parts[partIndex].selectedCO
-        };
-        break;
-    }
-    
-    setStudents(updatedStudents);
+
+        updatedStudents[index] = student; // Place the updated student back
+        return updatedStudents;
+    });
+};
+
+
+  // Update TCA marks and handle CO distribution
+  const updateTCAMark = (index, assessmentNumber, partIdentifier, value) => {
+     // partIdentifier is 'q1p1', 'q1p2', 'q2p1', 'q2p2' (for CT1) or 'q1p1', 'q1p2' (for CT2)
+     const marksValue = value === '' ? undefined : Number(value);
+
+     setStudents(prevStudents => {
+        const updatedStudents = [...prevStudents];
+        if (!updatedStudents[index]) return prevStudents; // Should not happen
+
+        let student = updatedStudents[index];
+        // Ensure TCA structure exists
+        if (!student.tcaMarks) student = initializeStudentMarks(student);
+
+        const tcaIndex = student.tcaMarks.findIndex(m => m.assessmentNumber === assessmentNumber);
+        if (tcaIndex === -1) {
+             console.error(`TCA Assessment ${assessmentNumber} not found for student index ${index}`);
+             return prevStudents; // Should be initialized, but safety check
+        }
+
+        const currentTCA = student.tcaMarks[tcaIndex];
+        if (!currentTCA.marks) currentTCA.marks = {}; // Ensure marks object exists
+
+        // Initialize part structure if it doesn't exist
+        if (!currentTCA.marks[partIdentifier]) {
+            currentTCA.marks[partIdentifier] = { value: undefined, coDistribution: {} };
+        }
+
+        // Update the raw value
+        currentTCA.marks[partIdentifier].value = marksValue;
+
+        // Determine the relevant question key for CO mapping (1, 2, or 3)
+        let questionKey;
+        if (assessmentNumber === 1) {
+            questionKey = partIdentifier.startsWith('q1') ? 1 : 3;
+        } else { // assessmentNumber === 2
+            questionKey = 2;
+        }
+
+        // Redistribute marks to selected COs
+        const selectedCOsForQuestion = tcaSelectedCOs[questionKey];
+        const selectedCOKeys = Object.entries(selectedCOsForQuestion)
+                                      .filter(([_, isSelected]) => isSelected)
+                                      .map(([key, _]) => key); // ['co1', 'co2', ...]
+        const selectedCOCount = selectedCOKeys.length;
+
+        // Clear previous distribution for this part
+        currentTCA.marks[partIdentifier].coDistribution = {};
+
+        if (selectedCOCount > 0 && marksValue !== undefined && !isNaN(marksValue)) {
+            const marksPerCO = marksValue / selectedCOCount;
+            selectedCOKeys.forEach(coKey => {
+                // Store distribution, mapping 'co1' -> 'CO1' etc. if needed by backend
+                 currentTCA.marks[partIdentifier].coDistribution[coKey.toUpperCase()] = marksPerCO;
+            });
+        }
+
+        updatedStudents[index] = student;
+        return updatedStudents;
+     });
   };
 
   const handleCOChange = (questionNum, part, value) => {
+    // Update the central CO selection state
     setSelectedCOs(prev => ({
       ...prev,
       [questionNum]: {
@@ -223,752 +443,756 @@ const AssessmentGrid = ({
       }
     }));
 
-    // Update all existing students with the new CO
-    const updatedStudents = students.map(student => {
-      if (type === 'tms' && student?.tmsMarks?.[0]?.questions) {
-        student.tmsMarks[0].questions[questionNum - 1][`part${part}`].coNumber = value;
-      } else if (type === 'tes' && student?.tesMarks?.[0]?.questions) {
-        student.tesMarks[0].questions[questionNum - 1][`part${part}`].coNumber = value;
+    // Update CO number for all existing students for that specific question/part
+    setStudents(prevStudents => prevStudents.map(student => {
+      if (!student) return student;
+      const updatedStudent = { ...student }; // Shallow copy
+
+      if (type === 'tms' && updatedStudent.tmsMarks?.[0]?.questions?.[questionNum - 1]?.[`part${part}`]) {
+         // Deep copy needed parts to avoid mutation
+         const newTmsMarks = [{ ...updatedStudent.tmsMarks[0], questions: [...updatedStudent.tmsMarks[0].questions] }];
+         newTmsMarks[0].questions[questionNum - 1] = { ...newTmsMarks[0].questions[questionNum - 1] };
+         newTmsMarks[0].questions[questionNum - 1][`part${part}`] = { ...newTmsMarks[0].questions[questionNum - 1][`part${part}`], coNumber: value };
+         updatedStudent.tmsMarks = newTmsMarks;
+
+      } else if (type === 'tes' && updatedStudent.tesMarks?.[0]?.questions?.[questionNum - 1]?.[`part${part}`]) {
+         const newTesMarks = [{ ...updatedStudent.tesMarks[0], questions: [...updatedStudent.tesMarks[0].questions] }];
+         newTesMarks[0].questions[questionNum - 1] = { ...newTesMarks[0].questions[questionNum - 1] };
+         newTesMarks[0].questions[questionNum - 1][`part${part}`] = { ...newTesMarks[0].questions[questionNum - 1][`part${part}`], coNumber: value };
+         updatedStudent.tesMarks = newTesMarks;
       }
-      return student;
-    });
-    setStudents(updatedStudents);
-  };
-
-  const updateTCAMark = (index, assessmentNumber, co, part, value) => {
-    const updatedStudents = [...students];
-    if (!updatedStudents[index]) {
-      updatedStudents[index] = {};
-    }
-    if (!updatedStudents[index].tcaMarks) {
-      updatedStudents[index].tcaMarks = [
-        { assessmentNumber: 1, marks: {} },
-        { assessmentNumber: 2, marks: {} }
-      ];
-    }
-    
-    const assessment = updatedStudents[index].tcaMarks.find(m => m.assessmentNumber === assessmentNumber);
-    if (!assessment) {
-      updatedStudents[index].tcaMarks.push({ 
-        assessmentNumber: assessmentNumber, 
-        marks: {} 
-      });
-    }
-    
-    const tcaIndex = updatedStudents[index].tcaMarks.findIndex(m => m.assessmentNumber === assessmentNumber);
-    
-    // Set the marks for this part
-    if (!updatedStudents[index].tcaMarks[tcaIndex].marks[part]) {
-      updatedStudents[index].tcaMarks[tcaIndex].marks[part] = {};
-    }
-    
-    updatedStudents[index].tcaMarks[tcaIndex].marks[part].value = Number(value) || 0;
-    
-    // Distribute the marks to selected COs
-    const questionKey = assessmentNumber === 1 ? 
-      (part.startsWith('q1') ? 1 : 3) : 
-      2;
-      
-    const selectedCOsForQuestion = tcaSelectedCOs[questionKey];
-    const selectedCOCount = Object.values(selectedCOsForQuestion).filter(Boolean).length;
-    
-    if (selectedCOCount > 0) {
-      const marksPerCO = (Number(value) || 0) / selectedCOCount;
-      
-      // Store the distributed marks for each selected CO
-      Object.entries(selectedCOsForQuestion).forEach(([coKey, isSelected]) => {
-        if (isSelected) {
-          if (!updatedStudents[index].tcaMarks[tcaIndex].marks[part].coDistribution) {
-            updatedStudents[index].tcaMarks[tcaIndex].marks[part].coDistribution = {};
-          }
-          updatedStudents[index].tcaMarks[tcaIndex].marks[part].coDistribution[coKey] = marksPerCO;
-        }
-      });
-    }
-    
-    setStudents(updatedStudents);
-  };
-
-  const calculateTCATotal = (index, assessmentNumber, questionKey) => {
-    const student = students[index];
-    if (!student?.tcaMarks) return 0;
-    
-    const assessment = student.tcaMarks.find(m => m.assessmentNumber === assessmentNumber);
-    if (!assessment || !assessment.marks) return 0;
-    
-    // Determine which parts belong to this question
-    let parts = [];
-    if (assessmentNumber === 1) {
-      if (questionKey === 1) {
-        parts = ['q1p1', 'q1p2'];
-      } else if (questionKey === 3) {
-        parts = ['q2p1', 'q2p2'];
-      }
-    } else if (assessmentNumber === 2) {
-      parts = ['q1p1', 'q1p2'];
-    }
-    
-    // Sum up the marks for these parts
-    return parts.reduce((sum, part) => {
-      return sum + (assessment.marks[part]?.value || 0);
-    }, 0);
-  };
-
-  const calculateTotalTCAMarks = (index) => {
-    const student = students[index];
-    if (!student?.tcaMarks) return 0;
-    
-    let total = 0;
-    
-    // Class Test 1
-    const ct1 = student.tcaMarks.find(m => m.assessmentNumber === 1);
-    if (ct1 && ct1.marks) {
-      total += Object.values(ct1.marks).reduce((sum, mark) => sum + (mark.value || 0), 0);
-    }
-    
-    // Class Test 2
-    const ct2 = student.tcaMarks.find(m => m.assessmentNumber === 2);
-    if (ct2 && ct2.marks) {
-      total += Object.values(ct2.marks).reduce((sum, mark) => sum + (mark.value || 0), 0);
-    }
-    
-    return total;
+      return updatedStudent;
+    }));
   };
 
   const handleTcaCOChange = (questionKey, coKey, checked) => {
-    setTcaSelectedCOs(prev => ({
-      ...prev,
-      [questionKey]: {
-        ...prev[questionKey],
-        [coKey]: checked
-      }
-    }));
-    
-    // Update all existing students to redistribute marks
-    const updatedStudents = [...students];
-    updatedStudents.forEach((student, index) => {
-      if (!student?.tcaMarks) return;
-      
-      // Determine which assessment and parts this change affects
-      let assessmentNumber, parts;
-      if (questionKey === 1) {
-        assessmentNumber = 1;
-        parts = ['q1p1', 'q1p2'];
-      } else if (questionKey === 3) {
-        assessmentNumber = 1;
-        parts = ['q2p1', 'q2p2'];
-      } else if (questionKey === 2) {
-        assessmentNumber = 2;
-        parts = ['q1p1', 'q1p2'];
-      }
-      
-      const tcaIndex = student.tcaMarks.findIndex(m => m.assessmentNumber === assessmentNumber);
-      if (tcaIndex === -1) return;
-      
-      // Redistribute marks for each part
-      parts.forEach(part => {
-        const mark = student.tcaMarks[tcaIndex].marks[part];
-        if (!mark || !mark.value) return;
-        
-        const selectedCOsForQuestion = {
-          ...tcaSelectedCOs[questionKey],
-          [coKey]: checked
-        };
-        const selectedCOCount = Object.values(selectedCOsForQuestion).filter(Boolean).length;
-        
-        if (selectedCOCount > 0) {
-          const marksPerCO = mark.value / selectedCOCount;
-          
-          if (!mark.coDistribution) {
-            mark.coDistribution = {};
-          }
-          
-          // Update distribution for all COs
-          Object.entries(selectedCOsForQuestion).forEach(([coKey, isSelected]) => {
-            if (isSelected) {
-              mark.coDistribution[coKey] = marksPerCO;
-            } else {
-              delete mark.coDistribution[coKey];
-            }
-          });
+     // 1. Update the central TCA CO selection state
+     const updatedTcaSelectedCOs = {
+        ...tcaSelectedCOs,
+        [questionKey]: {
+            ...tcaSelectedCOs[questionKey],
+            [coKey]: checked
         }
-      });
-    });
-    
-    setStudents(updatedStudents);
-  };
+     };
+     setTcaSelectedCOs(updatedTcaSelectedCOs); // Update state first
 
-  const saveAssessmentData = async () => {
-    try {
-      setSaveStatus('Saving...');
-      
-      const validStudents = students.filter(student => 
-        student && student.rollNo && student.name
-      );
+     // 2. Update all students to redistribute marks based on the *new* selection
+     setStudents(prevStudents => {
+        return prevStudents.map((student) => {
+            if (!student?.tcaMarks) return student; // Skip if no TCA marks
 
-      const assessmentData = {
-        type,
-        assessmentNumber,
-        tmsType,
-        subject: {
-          code: subjectCode,
-          name: subjectName
-        },
-        academicYear,
-        semester,
-        branch,
-        section,
-        facultyId,
-        numberOfStudents: validStudents.length,
-        students: validStudents
-      };
+            const newStudent = { ...student, tcaMarks: [] }; // Start fresh tcaMarks array
 
-      switch (type) {
-        case 'tms':
-          assessmentData.tmsConfig = {
-            type: tmsType,
-            maxMarks: config.maxMarks,
-            weightage: config.weightage,
-            coMapping: Object.entries(selectedCOs).map(([questionNum, cos]) => ({
-              questionNumber: parseInt(questionNum),
-              partA: { coNumber: cos.partA },
-              partB: { coNumber: cos.partB }
-            }))
-          };
-          break;
-          
-        case 'tca':
-          assessmentData.tcaConfig = {
-            numberOfAssessments: 2,
-            weightage: config.weightage,
-            assessments: [
-              {
-                assessmentNumber: 1,
-                name: "Class Test 1 or Assignment",
-                questions: [
-                  {
-                    questionNumber: 1,
-                    coNumber: "CO1",
-                    maxMarks: 3,
-                    parts: [
-                      { partNumber: 1, maxMarks: 1.5 },
-                      { partNumber: 2, maxMarks: 1.5 }
-                    ]
-                  },
-                  {
-                    questionNumber: 2,
-                    coNumber: "CO3",
-                    maxMarks: 3,
-                    parts: [
-                      { partNumber: 1, maxMarks: 1.5 },
-                      { partNumber: 2, maxMarks: 1.5 }
-                    ]
-                  }
-                ]
-              },
-              {
-                assessmentNumber: 2,
-                name: "Class Test 2",
-                questions: [
-                  {
-                    questionNumber: 1,
-                    coNumber: "CO2+CO4",
-                    maxMarks: 6,
-                    parts: [
-                      { partNumber: 1, maxMarks: 3 },
-                      { partNumber: 2, maxMarks: 3 }
-                    ]
-                  }
-                ]
-              }
-            ]
-          };
-          break;
-          
-        case 'tes':
-          assessmentData.tesConfig = {
-            numberOfQuestions: 5,
-            weightage: config.weightage,
-            coMapping: Object.entries(selectedCOs).map(([questionNum, cos]) => ({
-              questionNumber: parseInt(questionNum),
-              partA: { coNumber: cos.partA },
-              partB: { coNumber: cos.partB },
-              partC: { coNumber: cos.partC }
-            }))
-          };
-          break;
-      }
-      console.log('assessment data : ',assessmentData);
-      const response = await axios.post('/update/course-assessment/create', assessmentData);
-      
-      setSaveStatus('Saved successfully!');
-      setTimeout(() => setSaveStatus(''), 3000);
-    } catch (error) {
-      console.error('Error saving assessment:', error);
-      setSaveStatus('Error saving data');
-      setTimeout(() => setSaveStatus(''), 3000);
+            // Deep copy necessary to avoid mutation issues
+            student.tcaMarks.forEach(asm => {
+                newStudent.tcaMarks.push({ ...asm, marks: asm.marks ? JSON.parse(JSON.stringify(asm.marks)) : {} });
+            });
+
+
+            // Determine which assessment number and parts this change affects
+            let assessmentNumber;
+            let partsToUpdate;
+            if (questionKey === 1) { // CT1-Q1
+                assessmentNumber = 1;
+                partsToUpdate = ['q1p1', 'q1p2'];
+            } else if (questionKey === 3) { // CT1-Q2
+                assessmentNumber = 1;
+                partsToUpdate = ['q2p1', 'q2p2'];
+            } else if (questionKey === 2) { // CT2-Q1
+                assessmentNumber = 2;
+                partsToUpdate = ['q1p1', 'q1p2'];
+            } else {
+                return student; // Should not happen
+            }
+
+            const tcaIndex = newStudent.tcaMarks.findIndex(m => m.assessmentNumber === assessmentNumber);
+            if (tcaIndex === -1 || !newStudent.tcaMarks[tcaIndex].marks) {
+                 return student; // Skip if assessment or marks missing
+            }
+
+            const currentTCA = newStudent.tcaMarks[tcaIndex];
+            const selectedCOsForQuestion = updatedTcaSelectedCOs[questionKey]; // Use the latest state
+            const selectedCOKeys = Object.entries(selectedCOsForQuestion)
+                                            .filter(([_, isSelected]) => isSelected)
+                                            .map(([key, _]) => key);
+            const selectedCOCount = selectedCOKeys.length;
+
+            // Redistribute marks for each affected part
+            partsToUpdate.forEach(partIdentifier => {
+                const partMark = currentTCA.marks[partIdentifier];
+                if (!partMark || partMark.value === undefined || isNaN(partMark.value)) {
+                   // If no marks entered, just ensure distribution is empty
+                    if (partMark) partMark.coDistribution = {};
+                    return;
+                }
+
+                // Clear previous distribution
+                partMark.coDistribution = {};
+
+                if (selectedCOCount > 0) {
+                    const marksPerCO = partMark.value / selectedCOCount;
+                    selectedCOKeys.forEach(coKey => {
+                         partMark.coDistribution[coKey.toUpperCase()] = marksPerCO;
+                    });
+                }
+            });
+            return newStudent; // Return the updated student
+        });
+     });
+ };
+
+
+  // --- Calculation Helpers ---
+  const calculateTCATotal = (studentIndex, assessmentNumber, questionKey) => {
+    const student = students[studentIndex];
+    const assessment = student?.tcaMarks?.find(m => m.assessmentNumber === assessmentNumber);
+    if (!assessment?.marks) return 0;
+
+    let parts = [];
+    if (assessmentNumber === 1) {
+      parts = (questionKey === 1) ? ['q1p1', 'q1p2'] : (questionKey === 3 ? ['q2p1', 'q2p2'] : []);
+    } else if (assessmentNumber === 2) {
+      parts = (questionKey === 2) ? ['q1p1', 'q1p2'] : [];
     }
+
+    return parts.reduce((sum, part) => sum + (Number(assessment.marks[part]?.value) || 0), 0);
   };
 
-  const calculateTotalMarks = (studentIndex) => {
+  const calculateTotalTCAMarks = (studentIndex) => {
+    const student = students[studentIndex];
+    if (!student?.tcaMarks) return 0;
+    let total = 0;
+    student.tcaMarks.forEach(assessment => {
+      if (assessment?.marks) {
+        total += Object.values(assessment.marks).reduce((sum, part) => sum + (Number(part?.value) || 0), 0);
+      }
+    });
+    return total;
+  };
+
+  const calculateTotalMarks = (studentIndex) => { // TMS Total
     const student = students[studentIndex];
     if (!student?.tmsMarks?.[0]?.questions) return 0;
-
     return student.tmsMarks[0].questions.reduce((total, q) => {
-      return total + (q.partA?.marksObtained || 0) + (q.partB?.marksObtained || 0);
+      const partA = Number(q.partA?.marksObtained) || 0;
+      const partB = Number(q.partB?.marksObtained) || 0;
+      // Ensure -1 isn't added for TMS (should only be 0 or positive)
+      return total + (partA > 0 ? partA : 0) + (partB > 0 ? partB : 0);
     }, 0);
   };
 
-  const calculateTESTotal = (studentIndex) => {
+  const calculateTESTotal = (studentIndex) => { // TES Total (Best 4 out of 5)
     const student = students[studentIndex];
     if (!student?.tesMarks?.[0]?.questions) return 0;
 
     const questionTotals = student.tesMarks[0].questions.map(q => {
-      if (q.partA?.marksObtained === -1 || q.partB?.marksObtained === -1 || q.partC?.marksObtained === -1) {
-        return 0; // Skip this question if any part is marked as not attempted
-      }
-      return (q.partA?.marksObtained || 0) + (q.partB?.marksObtained || 0) + (q.partC?.marksObtained || 0);
-    });
+      // Treat undefined/empty marks as 0 for calculation, handle -1 specifically
+      const partA = q.partA?.marksObtained;
+      const partB = q.partB?.marksObtained;
+      const partC = q.partC?.marksObtained;
 
-    // Sort in descending order and take top 4 (skip the lowest)
-    return questionTotals.sort((a, b) => b - a).slice(0, 4).reduce((a, b) => a + b, 0);
+      // If any part is -1 (not attempted), the question score is 0 for 'best of' calculation
+      if (partA === -1 || partB === -1 || partC === -1) {
+        return 0;
+      }
+
+      // Otherwise, sum the valid marks (treating undefined/null as 0)
+      const markA = Number(partA) || 0;
+      const markB = Number(partB) || 0;
+      const markC = Number(partC) || 0;
+      return (markA > 0 ? markA : 0) + (markB > 0 ? markB : 0) + (markC > 0 ? markC : 0);
+
+    }).sort((a, b) => b - a); // Sort descending
+
+    // Sum the top 4 scores
+    return questionTotals.slice(0, 4).reduce((sum, score) => sum + score, 0);
   };
+
+
+  // --- Save Data ---
+  const saveAssessmentData = async () => {
+    setLoading(true);
+    setSaveStatus('Saving...');
+
+    // Ensure students have the initialized structure before saving
+    const validStudents = students
+        .filter(student => student && student.rollNo && student.name)
+        .map(initializeStudentMarks); // Ensure structure is consistent
+
+    if (validStudents.length !== numberOfStudents) {
+       console.warn("Mismatch between student count and valid student entries.")
+       // Decide how to handle: Save only valid ones, or alert user?
+       // Saving only valid ones:
+       // setNumberOfStudents(validStudents.length); // Optional: update count state
+    }
+
+    const assessmentPayload = {
+      type,
+      // assessmentNumber: (type === 'tca' ? assessmentNumber : undefined), // Usually TCA is saved as a whole
+      tmsType: (type === 'tms' ? tmsType : undefined),
+      subject: { code: subjectCode, name: subjectName },
+      academicYear,
+      semester,
+      branch,
+      section,
+      facultyId,
+      numberOfStudents: validStudents.length,
+      students: validStudents, // Send the potentially cleaned/initialized students
+      // Add Configs based on type
+    };
+
+    // Helper to create CO string like "CO1+CO3" from the state object
+    const createCOString = (coSelectionObject) => {
+        return Object.entries(coSelectionObject)
+               .filter(([_, isSelected]) => isSelected)
+               .map(([key, _]) => key.toUpperCase()) // CO1, CO2 etc.
+               .sort() // Consistent order
+               .join('+') || null; // Return null if none selected
+    }
+
+    switch (type) {
+      case 'tms':
+        assessmentPayload.tmsConfig = {
+          type: tmsType,
+          maxMarks: config?.maxMarks || 50, // Example default, get from prop if available
+          weightage: config?.weightage || 10, // Example default
+          coMapping: Object.entries(selectedCOs).map(([qNum, cos]) => ({
+            questionNumber: parseInt(qNum),
+            partA: { coNumber: cos.partA },
+            partB: { coNumber: cos.partB }
+          }))
+        };
+        break;
+
+      case 'tca':
+        assessmentPayload.tcaConfig = {
+          numberOfAssessments: 2, // Fixed for this structure
+          weightage: config?.weightage || 10, // Example default
+          assessments: [
+            { // Class Test 1 or Assignment
+              assessmentNumber: 1,
+              name: "Class Test 1 or Assignment", // Make dynamic?
+              questions: [
+                { // Question 1 (mapped by key 1 in tcaSelectedCOs)
+                  questionNumber: 1,
+                  coNumber: createCOString(tcaSelectedCOs[1]), // Dynamic CO string
+                  maxMarks: 3, // Sum of parts
+                  // parts definition might be useful for display/validation but less critical for calculation storage here
+                },
+                { // Question 2 (mapped by key 3 in tcaSelectedCOs)
+                  questionNumber: 2,
+                  coNumber: createCOString(tcaSelectedCOs[3]), // Dynamic CO string
+                  maxMarks: 3,
+                }
+              ]
+            },
+            { // Class Test 2
+              assessmentNumber: 2,
+              name: "Class Test 2",
+              questions: [
+                { // Question 1 (mapped by key 2 in tcaSelectedCOs)
+                  questionNumber: 1,
+                  coNumber: createCOString(tcaSelectedCOs[2]), // Dynamic CO string
+                  maxMarks: 6,
+                }
+              ]
+            }
+          ]
+        };
+        break;
+
+      case 'tes':
+        assessmentPayload.tesConfig = {
+          numberOfQuestions: 5, // Fixed
+          weightage: config?.weightage || 30, // Example default
+          coMapping: Object.entries(selectedCOs).map(([qNum, cos]) => ({
+            questionNumber: parseInt(qNum),
+            partA: { coNumber: cos.partA },
+            partB: { coNumber: cos.partB },
+            partC: { coNumber: cos.partC }
+          }))
+        };
+        break;
+       default:
+          console.error("Invalid assessment type for saving config");
+    }
+    console.log('Saving assessment data:', JSON.stringify(assessmentPayload, null, 2)); // Log payload for debugging
+
+    try {
+      // Use the POST route defined in Express
+      const response = await axios.post('http://localhost:8000/api/assessments', assessmentPayload);
+
+      setSaveStatus('Saved successfully!');
+      // Optionally refetch data after save or update state based on response
+      // fetchAssessmentData();
+      setAssessmentData(response.data.assessment); // Update local state with saved data (including _id etc)
+
+    } catch (error) {
+      console.error('Error saving assessment:', error.response?.data || error.message);
+      setSaveStatus(`Error saving: ${error.response?.data?.error || error.message}`);
+    } finally {
+      setLoading(false);
+      setTimeout(() => setSaveStatus(''), 5000); // Keep status longer
+    }
+  };
+
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-6">
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Upload Student Data (Excel file)
-        </label>
-        <input
-          type="file"
-          accept=".xlsx,.xls"
-          onChange={handleFileUpload}
-          className="block w-full text-sm text-gray-500
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-md file:border-0
-            file:text-sm file:font-semibold
-            file:bg-blue-50 file:text-blue-700
-            hover:file:bg-blue-100"
-        />
-        <p className="mt-1 text-sm text-gray-500">
-          Excel file should have columns for "Roll No" (or "RollNo"/"Roll Number") and "Name" (or "Student Name")
-        </p>
+      {/* Loading Indicator */}
+       {loading && (
+          <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
+             <p className="text-lg font-semibold text-blue-600">Loading...</p>
+          </div>
+       )}
+
+      {/* File Upload Section */}
+      <div className="mb-4 flex flex-col sm:flex-row gap-4 items-start">
+         <div className='flex-grow'>
+            <label htmlFor="file-upload" className="block text-sm font-medium text-gray-700 mb-1">
+                Upload Student List (Excel)
+            </label>
+            <input
+                id="file-upload"
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileUpload}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border rounded-md p-1"
+                aria-describedby="file-help"
+                disabled={loading}
+            />
+            <p id="file-help" className="mt-1 text-xs text-gray-500">
+                Columns: "Roll No"/"RollNo"/"Roll Number", "Name"/"Student Name".
+            </p>
+         </div>
+
+         <div className="flex items-center gap-2 pt-2 sm:pt-6">
+            <label htmlFor="student-count" className="font-medium text-gray-700 text-sm whitespace-nowrap">No. of Students:</label>
+            <input
+                id="student-count"
+                type="number"
+                min="0"
+                max="150"
+                value={numberOfStudents}
+                onChange={handleStudentCountChange}
+                className="w-20 p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm text-sm"
+                disabled={loading}
+                aria-label="Number of Students"
+            />
+         </div>
       </div>
 
-      <div className="mb-6 flex items-center gap-4">
-        <label className="flex items-center gap-2">
-          <span className="font-medium text-gray-700">Number of Students:</span>
-          <input
-            type="number"
-            min="1"
-            max="100"
-            value={numberOfStudents}
-            onChange={handleStudentCountChange}
-            className="w-24 p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
-          />
-        </label>
-      </div>
 
+      {/* --- TCA Specific Grid --- */}
       {type === 'tca' && (
         <div className="space-y-6">
-          {/* CO Selection Row */}
+          {/* CO Mapping Checkboxes */}
           <div className="mb-6 p-4 border rounded-lg shadow-sm bg-gray-50">
-            <h3 className="font-medium text-gray-800 mb-3">CO Mapping</h3>
-            <div className="grid grid-cols-3 gap-6">
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Class Test 1 - Question 1</h4>
-                <div className="flex flex-wrap gap-3">
-                  {cos.map((co, idx) => (
-                    <label key={`ct1-q1-${idx}`} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={tcaSelectedCOs[1][`co${idx+1}`]}
-                        onChange={(e) => handleTcaCOChange(1, `co${idx+1}`, e.target.checked)}
-                        className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
-                      />
-                      <span>{co}</span>
-                    </label>
-                  ))}
-                </div>
+              <h3 className="font-medium text-gray-800 mb-3 text-base">TCA Course Outcome (CO) Mapping</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
+                  {/* CT1-Q1 (Key 1) */}
+                  <div>
+                      <h4 className="font-medium text-gray-700 mb-2 text-sm">Class Test 1 - Q1 (Max: 3)</h4>
+                      <div className="flex flex-wrap gap-x-4 gap-y-2">
+                          {cos.map((co, idx) => (
+                              <label key={`ct1-q1-${idx}`} className="flex items-center space-x-1.5 text-sm">
+                                  <input
+                                      type="checkbox"
+                                      checked={!!tcaSelectedCOs[1]?.[`co${idx + 1}`]}
+                                      onChange={(e) => handleTcaCOChange(1, `co${idx + 1}`, e.target.checked)}
+                                      className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
+                                      disabled={loading}
+                                  />
+                                  <span>{co}</span>
+                              </label>
+                          ))}
+                      </div>
+                  </div>
+                  {/* CT1-Q2 (Key 3) */}
+                  <div>
+                      <h4 className="font-medium text-gray-700 mb-2 text-sm">Class Test 1 - Q2 (Max: 3)</h4>
+                      <div className="flex flex-wrap gap-x-4 gap-y-2">
+                          {cos.map((co, idx) => (
+                              <label key={`ct1-q2-${idx}`} className="flex items-center space-x-1.5 text-sm">
+                                  <input
+                                      type="checkbox"
+                                      checked={!!tcaSelectedCOs[3]?.[`co${idx + 1}`]}
+                                      onChange={(e) => handleTcaCOChange(3, `co${idx + 1}`, e.target.checked)}
+                                      className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
+                                      disabled={loading}
+                                  />
+                                  <span>{co}</span>
+                              </label>
+                          ))}
+                      </div>
+                  </div>
+                  {/* CT2-Q1 (Key 2) */}
+                  <div>
+                      <h4 className="font-medium text-gray-700 mb-2 text-sm">Class Test 2 - Q1 (Max: 6)</h4>
+                      <div className="flex flex-wrap gap-x-4 gap-y-2">
+                          {cos.map((co, idx) => (
+                              <label key={`ct2-q1-${idx}`} className="flex items-center space-x-1.5 text-sm">
+                                  <input
+                                      type="checkbox"
+                                      checked={!!tcaSelectedCOs[2]?.[`co${idx + 1}`]}
+                                      onChange={(e) => handleTcaCOChange(2, `co${idx + 1}`, e.target.checked)}
+                                      className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
+                                      disabled={loading}
+                                  />
+                                  <span>{co}</span>
+                              </label>
+                          ))}
+                      </div>
+                  </div>
               </div>
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Class Test 1 - Question 2</h4>
-                <div className="flex flex-wrap gap-3">
-                  {cos.map((co, idx) => (
-                    <label key={`ct1-q2-${idx}`} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={tcaSelectedCOs[3][`co${idx+1}`]}
-                        onChange={(e) => handleTcaCOChange(3, `co${idx+1}`, e.target.checked)}
-                        className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
-                      />
-                      <span>{co}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Class Test 2 - Question 1</h4>
-                <div className="flex flex-wrap gap-3">
-                  {cos.map((co, idx) => (
-                    <label key={`ct2-q1-${idx}`} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={tcaSelectedCOs[2][`co${idx+1}`]}
-                        onChange={(e) => handleTcaCOChange(2, `co${idx+1}`, e.target.checked)}
-                        className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
-                      />
-                      <span>{co}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
 
-          <div style={{ overflowX: 'auto', width: '100%' }} className="rounded-lg shadow-sm border border-gray-200">
-            <div style={{ minWidth: '1200px' }}>
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className="border-b p-3 bg-gray-50" style={{ minWidth: '120px' }} colSpan="2"></th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 font-semibold text-center" colSpan="6">
-                      Class Test 1 or Assignment
-                    </th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 font-semibold text-center" colSpan="3">
-                      Class Test 2
-                    </th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 font-semibold" rowSpan="2" style={{ minWidth: '80px' }}>
-                      Total
-                    </th>
-                  </tr>
-                  <tr>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700" style={{ minWidth: '120px' }}>Roll No</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700" style={{ minWidth: '120px' }}>Name</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center" colSpan="2">Question 1</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center">Total</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center" colSpan="2">Question 2</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center">Total</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center" colSpan="2">Question 1</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 text-center">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: numberOfStudents }).map((_, index) => (
-                    <tr key={index}>
-                      <td className="border-b border-r p-3" style={{ minWidth: '120px' }}>
-                        <input
-                          type="text"
-                          value={students[index]?.rollNo || ''}
-                          onChange={(e) => updateStudent(index, 'rollNo', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3" style={{ minWidth: '120px' }}>
-                        <input
-                          type="text"
-                          value={students[index]?.name || ''}
-                          onChange={(e) => updateStudent(index, 'name', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      {/* Class Test 1 - Question 1 */}
-                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="1.5"
-                          step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.marks?.q1p1?.value || ''}
-                          onChange={(e) => updateTCAMark(index, 1, 'q1', 'q1p1', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="1.5"
-                          step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.marks?.q1p2?.value || ''}
-                          onChange={(e) => updateTCAMark(index, 1, 'q1', 'q1p2', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
-                        {calculateTCATotal(index, 1, 1)}
-                      </td>
-                      {/* Class Test 1 - Question 2 */}
-                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="1.5"
-                          step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.marks?.q2p1?.value || ''}
-                          onChange={(e) => updateTCAMark(index, 1, 'q2', 'q2p1', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="1.5"
-                          step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 1)?.marks?.q2p2?.value || ''}
-                          onChange={(e) => updateTCAMark(index, 1, 'q2', 'q2p2', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
-                        {calculateTCATotal(index, 1, 3)}
-                      </td>
-                      {/* Class Test 2 - Question 1 */}
-                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="3"
-                          step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 2)?.marks?.q1p1?.value || ''}
-                          onChange={(e) => updateTCAMark(index, 2, 'q1', 'q1p1', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3" style={{ minWidth: '80px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="3"
-                          step="0.1"
-                          value={students[index]?.tcaMarks?.find(m => m.assessmentNumber === 2)?.marks?.q1p2?.value || ''}
-                          onChange={(e) => updateTCAMark(index, 2, 'q1', 'q1p2', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
-                        {calculateTCATotal(index, 2, 2)}
-                      </td>
-                      <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
-                        {calculateTotalTCAMarks(index)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          
-          {/* CO Distribution Summary */}
-          <div className="mt-6 p-4 border rounded-lg shadow-sm bg-gray-50">
-            <h3 className="font-medium text-gray-800 mb-3">CO Distribution Summary</h3>
-            <div className="grid grid-cols-6 gap-4">
-              {cos.map((co, idx) => {
-                const coKey = `co${idx+1}`;
-                // Calculate how many questions use this CO
-                const usedIn = [
-                  tcaSelectedCOs[1][coKey] ? 'CT1-Q1' : null,
-                  tcaSelectedCOs[3][coKey] ? 'CT1-Q2' : null,
-                  tcaSelectedCOs[2][coKey] ? 'CT2-Q1' : null,
-                ].filter(Boolean);
-                
-                return (
-                  <div key={coKey} className="p-3 border rounded-md bg-white shadow-sm">
-                    <h4 className="font-medium text-blue-600">{co}</h4>
-                    <p className="text-sm text-gray-600 mt-1">Used in: {usedIn.length ? usedIn.join(', ') : 'None'}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          {/* TCA Marks Table */}
+          <div className="overflow-x-auto w-full rounded-lg shadow-sm border border-gray-200">
+             <table className="min-w-full border-collapse text-sm">
+                 <thead className="bg-gray-50 sticky top-0 z-10"> {/* Make headers sticky */}
+                     <tr>
+                         <th rowSpan="2" className="border-b p-3 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 z-20" style={{ minWidth: '150px' }}>Roll No</th>
+                         <th rowSpan="2" className="border-b border-l p-3 text-left font-semibold text-gray-700 sticky left-[150px] bg-gray-50 z-20" style={{ minWidth: '180px' }}>Name</th>
+                         <th colSpan="5" className="border-b border-l p-3 text-center font-semibold text-gray-700">Class Test 1 or Assignment</th>
+                         <th colSpan="3" className="border-b border-l p-3 text-center font-semibold text-gray-700">Class Test 2</th>
+                         <th rowSpan="2" className="border-b border-l p-3 text-center font-semibold text-gray-700 sticky right-0 bg-gray-50 z-20" style={{ minWidth: '80px' }}>Total (12)</th>
+                     </tr>
+                     <tr>
+                         <th colSpan="2" className="border-b border-l p-2 text-center font-medium text-gray-600">Q1 (3)</th>
+                         <th className="border-b border-l p-2 text-center font-medium text-gray-600 bg-gray-100">Total</th>
+                         <th colSpan="2" className="border-b border-l p-2 text-center font-medium text-gray-600">Q2 (3)</th>
+                         {/*<th className="border-b border-l p-2 text-center font-medium text-gray-600 bg-gray-100">Total</th>*/}
+                         <th colSpan="2" className="border-b border-l p-2 text-center font-medium text-gray-600">Q1 (6)</th>
+                         <th className="border-b border-l p-2 text-center font-medium text-gray-600 bg-gray-100">Total</th>
+                     </tr>
+                     <tr>
+                        {/* Placeholder for sticky columns */}
+                         <th className="border-b p-0 h-0 sticky left-0 bg-gray-50 z-20" style={{ minWidth: '150px' }}></th>
+                         <th className="border-b border-l p-0 h-0 sticky left-[150px] bg-gray-50 z-20" style={{ minWidth: '180px' }}></th>
+                         {/* Part headers */}
+                         <th className="border-b border-l p-2 text-center font-normal text-gray-500">P1 (1.5)</th>
+                         <th className="border-b border-l p-2 text-center font-normal text-gray-500">P2 (1.5)</th>
+                         <th className="border-b border-l p-2 bg-gray-100"></th> {/* CT1 Q1 Total */}
+                         <th className="border-b border-l p-2 text-center font-normal text-gray-500">P1 (1.5)</th>
+                         <th className="border-b border-l p-2 text-center font-normal text-gray-500">P2 (1.5)</th>
+                         {/*<th className="border-b border-l p-2 bg-gray-100"></th> {/* CT1 Q2 Total */}
+                         <th className="border-b border-l p-2 text-center font-normal text-gray-500">P1 (3)</th>
+                         <th className="border-b border-l p-2 text-center font-normal text-gray-500">P2 (3)</th>
+                         <th className="border-b border-l p-2 bg-gray-100"></th> {/* CT2 Q1 Total */}
+                         {/* Placeholder for sticky column */}
+                         <th className="border-b border-l p-0 h-0 sticky right-0 bg-gray-50 z-20" style={{ minWidth: '80px' }}></th>
+                     </tr>
+                 </thead>
+                 <tbody>
+                     {Array.from({ length: numberOfStudents }).map((_, index) => {
+                        const student = students[index] || {};
+                        const ct1Marks = student.tcaMarks?.find(m => m.assessmentNumber === 1)?.marks || {};
+                        const ct2Marks = student.tcaMarks?.find(m => m.assessmentNumber === 2)?.marks || {};
+                        return (
+                            <tr key={index} className="hover:bg-gray-50">
+                                <td className="border-b border-l p-1 sticky left-0 bg-white hover:bg-gray-50 z-10" style={{ minWidth: '150px' }}>
+                                    <input
+                                        type="text"
+                                        value={student.rollNo || ''}
+                                        onChange={(e) => updateStudent(index, 'rollNo', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm"
+                                        disabled={loading} aria-label={`Roll No for student ${index + 1}`}
+                                    />
+                                </td>
+                                <td className="border-b border-l p-1 sticky left-[150px] bg-white hover:bg-gray-50 z-10" style={{ minWidth: '180px' }}>
+                                    <input
+                                        type="text"
+                                        value={student.name || ''}
+                                        onChange={(e) => updateStudent(index, 'name', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm"
+                                        disabled={loading} aria-label={`Name for student ${index + 1}`}
+                                    />
+                                </td>
+                                {/* CT1-Q1-P1 */}
+                                <td className="border-b border-l p-1" style={{ minWidth: '70px' }}>
+                                    <input
+                                        type="number" min="0" max="1.5" step="0.1"
+                                        value={ct1Marks.q1p1?.value ?? ''}
+                                        onChange={(e) => updateTCAMark(index, 1, 'q1p1', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm text-center"
+                                        disabled={loading} aria-label={`CT1 Q1 Part 1 for student ${index + 1}`}
+                                    />
+                                </td>
+                                {/* CT1-Q1-P2 */}
+                                <td className="border-b border-l p-1" style={{ minWidth: '70px' }}>
+                                    <input
+                                        type="number" min="0" max="1.5" step="0.1"
+                                        value={ct1Marks.q1p2?.value ?? ''}
+                                        onChange={(e) => updateTCAMark(index, 1, 'q1p2', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm text-center"
+                                        disabled={loading} aria-label={`CT1 Q1 Part 2 for student ${index + 1}`}
+                                    />
+                                </td>
+                                {/* CT1 Q1 Total */}
+                                <td className="border-b border-l p-2 text-center font-medium text-gray-700 bg-gray-100" style={{ minWidth: '70px' }}>
+                                    {calculateTCATotal(index, 1, 1)}
+                                </td>
+                                {/* CT1-Q2-P1 */}
+                                <td className="border-b border-l p-1" style={{ minWidth: '70px' }}>
+                                    <input
+                                        type="number" min="0" max="1.5" step="0.1"
+                                        value={ct1Marks.q2p1?.value ?? ''}
+                                        onChange={(e) => updateTCAMark(index, 1, 'q2p1', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm text-center"
+                                        disabled={loading} aria-label={`CT1 Q2 Part 1 for student ${index + 1}`}
+                                    />
+                                </td>
+                                {/* CT1-Q2-P2 */}
+                                <td className="border-b border-l p-1" style={{ minWidth: '70px' }}>
+                                    <input
+                                        type="number" min="0" max="1.5" step="0.1"
+                                        value={ct1Marks.q2p2?.value ?? ''}
+                                        onChange={(e) => updateTCAMark(index, 1, 'q2p2', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm text-center"
+                                        disabled={loading} aria-label={`CT1 Q2 Part 2 for student ${index + 1}`}
+                                    />
+                                </td>
+                                {/* CT1 Q2 Total - Merged display into CT2 Q1 */}
+                                {/* <td className="border-b border-l p-2 text-center font-medium text-gray-700 bg-gray-100" style={{ minWidth: '70px' }}>
+                                    {calculateTCATotal(index, 1, 3)}
+                                </td> */}
+                                {/* CT2-Q1-P1 */}
+                                <td className="border-b border-l p-1" style={{ minWidth: '70px' }}>
+                                    <input
+                                        type="number" min="0" max="3" step="0.1"
+                                        value={ct2Marks.q1p1?.value ?? ''}
+                                        onChange={(e) => updateTCAMark(index, 2, 'q1p1', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm text-center"
+                                        disabled={loading} aria-label={`CT2 Q1 Part 1 for student ${index + 1}`}
+                                    />
+                                </td>
+                                {/* CT2-Q1-P2 */}
+                                <td className="border-b border-l p-1" style={{ minWidth: '70px' }}>
+                                    <input
+                                        type="number" min="0" max="3" step="0.1"
+                                        value={ct2Marks.q1p2?.value ?? ''}
+                                        onChange={(e) => updateTCAMark(index, 2, 'q1p2', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm text-center"
+                                        disabled={loading} aria-label={`CT2 Q1 Part 2 for student ${index + 1}`}
+                                    />
+                                </td>
+                                {/* CT2 Q1 Total */}
+                                <td className="border-b border-l p-2 text-center font-medium text-gray-700 bg-gray-100" style={{ minWidth: '70px' }}>
+                                    {calculateTCATotal(index, 2, 2)}
+                                </td>
+                                {/* Overall Total */}
+                                <td className="border-b border-l p-2 text-center font-semibold text-gray-800 sticky right-0 bg-gray-100 hover:bg-gray-200 z-10" style={{ minWidth: '80px' }}>
+                                    {calculateTotalTCAMarks(index)}
+                                </td>
+                            </tr>
+                        );
+                     })}
+                 </tbody>
+             </table>
+         </div>
+         {/* Optional: CO Distribution Summary could go here if needed */}
         </div>
       )}
 
+
+      {/* --- TMS/TES Specific Grid --- */}
       {(type === 'tms' || type === 'tes') && (
         <div className="space-y-6">
           {/* CO Selection Row */}
-          <div style={{ overflowX: 'auto', width: '100%' }} className="rounded-lg shadow-sm border border-gray-200">
-            <div style={{ minWidth: type === 'tes' ? '1200px' : '1000px' }}>
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className="border-b p-3 bg-gray-50" style={{ minWidth: '120px' }} colSpan="2"></th>
-                    {[1, 2, 3, 4, 5].map(qNum => (
-                      <th key={qNum} colSpan={type === 'tes' ? 3 : 2} className="border-b p-3 bg-gray-50 text-gray-700 font-semibold">
-                        Question {qNum}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr>
-                    <th className="border-b p-3" style={{ minWidth: '120px' }} colSpan="2"></th>
-                    {[1, 2, 3, 4, 5].map(qNum => (
-                      <React.Fragment key={qNum}>
-                        <td className="border-b border-r p-3" style={{ minWidth: '100px' }}>
-                          <div className="text-center mb-2 text-sm font-medium text-gray-600">Part A</div>
-                          <select
-                            value={selectedCOs[qNum].partA}
-                            onChange={(e) => handleCOChange(qNum, 'A', e.target.value)}
-                            className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                          >
-                            {cos.map(co => (
-                              <option key={co} value={co}>{co}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="border-b border-r p-3" style={{ minWidth: '100px' }}>
-                          <div className="text-center mb-2 text-sm font-medium text-gray-600">Part B</div>
-                          <select
-                            value={selectedCOs[qNum].partB}
-                            onChange={(e) => handleCOChange(qNum, 'B', e.target.value)}
-                            className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                          >
-                            {cos.map(co => (
-                              <option key={co} value={co}>{co}</option>
-                            ))}
-                          </select>
-                        </td>
-                        {type === 'tes' && (
-                          <td className="border-b border-r p-3" style={{ minWidth: '100px' }}>
-                            <div className="text-center mb-2 text-sm font-medium text-gray-600">Part C</div>
-                            <select
-                              value={selectedCOs[qNum].partC}
-                              onChange={(e) => handleCOChange(qNum, 'C', e.target.value)}
-                              className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                            >
-                              {cos.map(co => (
-                                <option key={co} value={co}>{co}</option>
-                              ))}
-                            </select>
-                          </td>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </tr>
-                </thead>
-              </table>
-            </div>
-          </div>
+          <div className="overflow-x-auto w-full rounded-lg shadow-sm border border-gray-200 mb-4">
+             <table className="min-w-full border-collapse text-sm">
+                 <thead className="bg-gray-50">
+                     <tr>
+                         {/* Empty cells for Roll No/Name columns */}
+                         <th className="border-b p-3 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 z-20" style={{ minWidth: '150px' }}></th>
+                         <th className="border-b border-l p-3 text-left font-semibold text-gray-700 sticky left-[150px] bg-gray-50 z-20" style={{ minWidth: '180px' }}></th>
+                         {/* Question Headers */}
+                         {[1, 2, 3, 4, 5].map(qNum => (
+                             <th key={`q${qNum}-header`} colSpan={type === 'tes' ? 3 : 2} className="border-b border-l p-3 text-center font-semibold text-gray-700">
+                                 Question {qNum}
+                             </th>
+                         ))}
+                         {/* Empty cell for Total column */}
+                         <th className="border-b border-l p-3 text-center font-semibold text-gray-700 sticky right-0 bg-gray-50 z-20" style={{ minWidth: '80px' }}></th>
+                     </tr>
+                     <tr>
+                         {/* Sticky placeholders */}
+                          <th className="border-b p-0 h-0 sticky left-0 bg-gray-50 z-20" style={{ minWidth: '150px' }}></th>
+                          <th className="border-b border-l p-0 h-0 sticky left-[150px] bg-gray-50 z-20" style={{ minWidth: '180px' }}></th>
+                          {/* CO Selectors */}
+                         {[1, 2, 3, 4, 5].map(qNum => (
+                             <React.Fragment key={`co-select-${qNum}`}>
+                                 <td className="border-b border-l p-2" style={{ minWidth: '100px' }}>
+                                     <div className="text-center mb-1 text-xs font-medium text-gray-600">Part A CO</div>
+                                     <select
+                                         value={selectedCOs[qNum]?.partA || 'CO1'}
+                                         onChange={(e) => handleCOChange(qNum, 'A', e.target.value)}
+                                         className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-xs"
+                                         disabled={loading} aria-label={`Question ${qNum} Part A CO`}
+                                     >
+                                         {cos.map(co => <option key={`${qNum}-A-${co}`} value={co}>{co}</option>)}
+                                     </select>
+                                 </td>
+                                 <td className="border-b border-l p-2" style={{ minWidth: '100px' }}>
+                                     <div className="text-center mb-1 text-xs font-medium text-gray-600">Part B CO</div>
+                                     <select
+                                         value={selectedCOs[qNum]?.partB || 'CO1'}
+                                         onChange={(e) => handleCOChange(qNum, 'B', e.target.value)}
+                                         className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-xs"
+                                         disabled={loading} aria-label={`Question ${qNum} Part B CO`}
+                                     >
+                                         {cos.map(co => <option key={`${qNum}-B-${co}`} value={co}>{co}</option>)}
+                                     </select>
+                                 </td>
+                                 {type === 'tes' && (
+                                     <td className="border-b border-l p-2" style={{ minWidth: '100px' }}>
+                                         <div className="text-center mb-1 text-xs font-medium text-gray-600">Part C CO</div>
+                                         <select
+                                             value={selectedCOs[qNum]?.partC || 'CO1'}
+                                             onChange={(e) => handleCOChange(qNum, 'C', e.target.value)}
+                                             className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-xs"
+                                             disabled={loading} aria-label={`Question ${qNum} Part C CO`}
+                                         >
+                                             {cos.map(co => <option key={`${qNum}-C-${co}`} value={co}>{co}</option>)}
+                                         </select>
+                                     </td>
+                                 )}
+                             </React.Fragment>
+                         ))}
+                         {/* Sticky placeholder */}
+                         <th className="border-b border-l p-0 h-0 sticky right-0 bg-gray-50 z-20" style={{ minWidth: '80px' }}></th>
+                     </tr>
+                 </thead>
+             </table>
+         </div>
 
           {/* Marks Input Table */}
-          <div style={{ overflowX: 'auto', width: '100%' }} className="rounded-lg shadow-sm border border-gray-200">
-            <div style={{ minWidth: type === 'tes' ? '1200px' : '1000px' }}>
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 font-semibold" style={{ minWidth: '120px' }}>Roll No</th>
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 font-semibold" style={{ minWidth: '120px' }}>Name</th>
-                    {[1, 2, 3, 4, 5].map(qNum => (
-                      <th key={qNum} colSpan={type === 'tes' ? 3 : 2} className="border-b p-3 bg-gray-50 text-gray-700 font-semibold">
-                        Question {qNum}
-                      </th>
-                    ))}
-                    <th className="border-b p-3 bg-gray-50 text-gray-700 font-semibold" style={{ minWidth: '80px' }}>Total</th>
-                  </tr>
-                  <tr>
-                    <th className="border-b border-r p-3"></th>
-                    <th className="border-b border-r p-3"></th>
-                    {[1, 2, 3, 4, 5].map(qNum => (
-                      <React.Fragment key={qNum}>
-                        <th className="border-b border-r p-3 text-sm font-medium text-gray-600" style={{ minWidth: '100px' }}>A</th>
-                        <th className="border-b border-r p-3 text-sm font-medium text-gray-600" style={{ minWidth: '100px' }}>B</th>
-                        {type === 'tes' && (
-                          <th className="border-b border-r p-3 text-sm font-medium text-gray-600" style={{ minWidth: '100px' }}>C</th>
-                        )}
-                      </React.Fragment>
-                    ))}
-                    <th className="border-b border-r p-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: numberOfStudents }).map((_, index) => (
-                    <tr key={index}>
-                      <td className="border-b border-r p-3" style={{ minWidth: '120px' }}>
-                        <input
-                          type="text"
-                          value={students[index]?.rollNo || ''}
-                          onChange={(e) => updateStudent(index, 'rollNo', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      <td className="border-b border-r p-3" style={{ minWidth: '120px' }}>
-                        <input
-                          type="text"
-                          value={students[index]?.name || ''}
-                          onChange={(e) => updateStudent(index, 'name', e.target.value)}
-                          className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                        />
-                      </td>
-                      {[1, 2, 3, 4, 5].map(qNum => (
-                        <React.Fragment key={qNum}>
-                          <td className="border-b border-r p-3" style={{ minWidth: '100px' }}>
-                            <input
-                              type="number"
-                              min={type === 'tes' ? -1 : 0}
-                              max={type === 'tes' ? 7 : 5}
-                              value={type === 'tms' 
-                                ? students[index]?.tmsMarks?.[0]?.questions?.[qNum-1]?.partA?.marksObtained || ''
-                                : students[index]?.tesMarks?.[0]?.questions?.[qNum-1]?.partA?.marksObtained || ''
-                              }
-                              onChange={(e) => updateStudentMark(index, `${qNum}-A-marks`, e.target.value)}
-                              className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                              placeholder={type === 'tes' ? "-1" : ""}
-                            />
-                          </td>
-                          <td className="border-b border-r p-3" style={{ minWidth: '100px' }}>
-                            <input
-                              type="number"
-                              min={type === 'tes' ? -1 : 0}
-                              max={type === 'tes' ? 7 : 5}
-                              value={type === 'tms'
-                                ? students[index]?.tmsMarks?.[0]?.questions?.[qNum-1]?.partB?.marksObtained || ''
-                                : students[index]?.tesMarks?.[0]?.questions?.[qNum-1]?.partB?.marksObtained || ''
-                              }
-                              onChange={(e) => updateStudentMark(index, `${qNum}-B-marks`, e.target.value)}
-                              className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                              placeholder={type === 'tes' ? "-1" : ""}
-                            />
-                          </td>
-                          {type === 'tes' && (
-                            <td className="border-b border-r p-3" style={{ minWidth: '100px' }}>
-                              <input
-                                type="number"
-                                min={-1}
-                                max={6}
-                                value={students[index]?.tesMarks?.[0]?.questions?.[qNum-1]?.partC?.marksObtained || ''}
-                                onChange={(e) => updateStudentMark(index, `${qNum}-C-marks`, e.target.value)}
-                                className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 shadow-sm"
-                                placeholder="-1"
-                              />
-                            </td>
-                          )}
-                        </React.Fragment>
-                      ))}
-                      <td className="border-b border-r p-3 bg-gray-50 text-center font-medium text-gray-700" style={{ minWidth: '80px' }}>
-                        {type === 'tms' ? calculateTotalMarks(index) : calculateTESTotal(index)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="overflow-x-auto w-full rounded-lg shadow-sm border border-gray-200">
+             <table className="min-w-full border-collapse text-sm">
+                 <thead className="bg-gray-50 sticky top-0 z-10"> {/* Adjust top value based on header above */}
+                     <tr>
+                         <th className="border-b p-3 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 z-20" style={{ minWidth: '150px' }}>Roll No</th>
+                         <th className="border-b border-l p-3 text-left font-semibold text-gray-700 sticky left-[150px] bg-gray-50 z-20" style={{ minWidth: '180px' }}>Name</th>
+                         {[1, 2, 3, 4, 5].map(qNum => (
+                             <React.Fragment key={`marks-header-${qNum}`}>
+                                 <th className="border-b border-l p-2 text-center font-medium text-gray-600" style={{ minWidth: '100px' }}>
+                                     A ({type === 'tes' ? 7 : 5}) {type === 'tes' && <span className="text-xs font-light block">(NA: -1)</span>}
+                                     </th>
+                                 <th className="border-b border-l p-2 text-center font-medium text-gray-600" style={{ minWidth: '100px' }}>
+                                     B ({type === 'tes' ? 7 : 5}) {type === 'tes' && <span className="text-xs font-light block">(NA: -1)</span>}
+                                     </th>
+                                 {type === 'tes' && (
+                                     <th className="border-b border-l p-2 text-center font-medium text-gray-600" style={{ minWidth: '100px' }}>
+                                        C (6) <span className="text-xs font-light block">(NA: -1)</span>
+                                        </th>
+                                 )}
+                             </React.Fragment>
+                         ))}
+                         <th className="border-b border-l p-3 text-center font-semibold text-gray-700 sticky right-0 bg-gray-50 z-20" style={{ minWidth: '80px' }}>
+                             Total ({type === 'tes' ? '80' : '50'}) {type === 'tes' && <span className='text-xs font-light block'>(Best 4)</span>}
+                         </th>
+                     </tr>
+                 </thead>
+                 <tbody>
+                     {Array.from({ length: numberOfStudents }).map((_, index) => {
+                        const student = students[index] || {};
+                        const marksData = type === 'tms' ? student.tmsMarks?.[0]?.questions : student.tesMarks?.[0]?.questions;
+                        return (
+                            <tr key={index} className="hover:bg-gray-50">
+                                <td className="border-b border-l p-1 sticky left-0 bg-white hover:bg-gray-50 z-10" style={{ minWidth: '150px' }}>
+                                    <input
+                                        type="text"
+                                        value={student.rollNo || ''}
+                                        onChange={(e) => updateStudent(index, 'rollNo', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm"
+                                        disabled={loading} aria-label={`Roll No for student ${index + 1}`}
+                                    />
+                                </td>
+                                <td className="border-b border-l p-1 sticky left-[150px] bg-white hover:bg-gray-50 z-10" style={{ minWidth: '180px' }}>
+                                    <input
+                                        type="text"
+                                        value={student.name || ''}
+                                        onChange={(e) => updateStudent(index, 'name', e.target.value)}
+                                        className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm"
+                                        disabled={loading} aria-label={`Name for student ${index + 1}`}
+                                    />
+                                </td>
+                                {[1, 2, 3, 4, 5].map(qNum => {
+                                  const qIndex = qNum - 1;
+                                  const qData = marksData?.[qIndex];
+                                  return (
+                                      <React.Fragment key={`marks-input-${index}-${qNum}`}>
+                                          <td className="border-b border-l p-1" style={{ minWidth: '100px' }}>
+                                              <input
+                                                  type="number"
+                                                  min={type === 'tes' ? -1 : 0}
+                                                  max={type === 'tes' ? 7 : 5}
+                                                  step={type === 'tes' ? 1 : 0.5} // Allow half marks for TMS?
+                                                  value={qData?.partA?.marksObtained ?? ''}
+                                                  onChange={(e) => updateStudentMark(index, `${qNum}-A`, e.target.value)}
+                                                  className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm text-center"
+                                                  placeholder={type === 'tes' ? "-1" : ""}
+                                                  disabled={loading} aria-label={`Question ${qNum} Part A for student ${index + 1}`}
+                                              />
+                                          </td>
+                                          <td className="border-b border-l p-1" style={{ minWidth: '100px' }}>
+                                              <input
+                                                  type="number"
+                                                  min={type === 'tes' ? -1 : 0}
+                                                  max={type === 'tes' ? 7 : 5}
+                                                  step={type === 'tes' ? 1 : 0.5}
+                                                  value={qData?.partB?.marksObtained ?? ''}
+                                                  onChange={(e) => updateStudentMark(index, `${qNum}-B`, e.target.value)}
+                                                  className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm text-center"
+                                                  placeholder={type === 'tes' ? "-1" : ""}
+                                                  disabled={loading} aria-label={`Question ${qNum} Part B for student ${index + 1}`}
+                                              />
+                                          </td>
+                                          {type === 'tes' && (
+                                              <td className="border-b border-l p-1" style={{ minWidth: '100px' }}>
+                                                  <input
+                                                      type="number"
+                                                      min={-1}
+                                                      max={6}
+                                                      step={1}
+                                                      value={qData?.partC?.marksObtained ?? ''}
+                                                      onChange={(e) => updateStudentMark(index, `${qNum}-C`, e.target.value)}
+                                                      className="w-full p-1.5 border rounded-md bg-white focus:ring-1 focus:ring-blue-500 shadow-sm text-sm text-center"
+                                                      placeholder="-1"
+                                                      disabled={loading} aria-label={`Question ${qNum} Part C for student ${index + 1}`}
+                                                  />
+                                              </td>
+                                          )}
+                                      </React.Fragment>
+                                  );
+                                })}
+                                <td className="border-b border-l p-2 text-center font-semibold text-gray-800 sticky right-0 bg-gray-100 hover:bg-gray-200 z-10" style={{ minWidth: '80px' }}>
+                                    {type === 'tms' ? calculateTotalMarks(index) : calculateTESTotal(index)}
+                                </td>
+                            </tr>
+                        );
+                     })}
+                 </tbody>
+             </table>
           </div>
         </div>
       )}
-      
-      <div className="mt-6 flex justify-end">
+
+      {/* Save Button and Status */}
+      <div className="mt-6 flex justify-end items-center gap-4">
+         {saveStatus && (
+             <span className={`text-sm font-medium ${saveStatus.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
+                 {saveStatus}
+             </span>
+         )}
         <button
           onClick={saveAssessmentData}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+          disabled={loading || numberOfStudents === 0}
+          className={`px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${loading || numberOfStudents === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          Save Assessment Data
+          {loading ? 'Saving...' : 'Save Assessment Data'}
         </button>
-        {saveStatus && (
-          <span className={`ml-4 py-2 ${saveStatus.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
-            {saveStatus}
-          </span>
-        )}
       </div>
     </div>
   );

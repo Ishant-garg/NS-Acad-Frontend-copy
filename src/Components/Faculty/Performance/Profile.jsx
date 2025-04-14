@@ -181,7 +181,7 @@ const AddClassModal = ({ isOpen, onClose, userId, onClassAdded }) => {
 
   const handleSubjectChange = (index, field, value) => {
     const updatedSubjects = [...subjects];
-    updatedSubjects[index][field] = value;
+    updatedSubjects[index][field] = value;  
     setSubjects(updatedSubjects);
   };
 
