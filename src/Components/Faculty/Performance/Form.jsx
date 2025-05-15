@@ -28,16 +28,27 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
   useEffect(() => {
     setFields(pageFields);
     const initialData = pageFields.reduce((acc, field) => {
-      acc[field] = '';
+      // Set default value for academic_year fields to the current selected year
+      if (field[1] === 'academic_year') {
+        // Make sure Academic Year is always stored as a string for consistency
+        acc[field[0]] = selectedYear.toString();
+      } else {
+        acc[field[0]] = '';
+      }
       return acc;
     }, {});
     setFormData(initialData);
-  }, [pageFields]);
+  }, [pageFields, selectedYear]);
 
   const handleInputChange = (e, field) => {
     const { value } = e.target;
     setFormData(prev => ({ ...prev, [field]: value }));
     setFormErrors(prev => ({ ...prev, [field]: '' }));
+    
+    // If this is an academic year field, update the selectedYear state too
+    if (field === 'Academic Year') {
+      setSelectedYear(parseInt(value));
+    }
   };
 
   const handleYearChange = (e) => {
@@ -116,8 +127,8 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
   const validateForm = () => {
     const errors = {};
     fields.forEach(item => {
-      if (!formData[item] || formData[item].trim() === '') {
-        errors[item] = `${item[0]} is required`;
+      if (!formData[item[0]] || formData[item[0]].trim() === '') {
+        errors[item[0]] = `${item[0]} is required`;
       }
     });
 
@@ -131,12 +142,67 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
 
   const handleSubmit = () => {
     if (validateForm()) {
+      // Create the dataArray from formData
       const dataArray = Object.entries(formData).map(([field, value]) => ({ [field]: value }));
-      // Pass the selected year to the submit function
-      submitFormData(dataArray, uploadedFileID, selectedYear);
+      
+      // Always include the Academic Year when submitting
+      const hasAcademicYear = fields.some(field => field[1] === 'academic_year');
+      if (hasAcademicYear) {
+        // Make sure the academic year is in the dataArray, with the right format
+        const academicYearIndex = dataArray.findIndex(item => Object.keys(item)[0] === 'Academic Year');
+        if (academicYearIndex >= 0) {
+          // Update existing entry
+          dataArray[academicYearIndex] = { 'Academic Year': selectedYear.toString() };
+        } else {
+          // Add new entry
+          dataArray.push({ 'Academic Year': selectedYear.toString() });
+        }
+      }
+      
+      // Pass the data, file ID, and numeric selectedYear to the parent component
+      submitFormData(dataArray, uploadedFileID, parseInt(selectedYear, 10));
     } else {
       setWarningMessage("Please fill all required fields and upload a file");
     }
+  };
+
+  const renderFormFields = () => {
+    // Filter out academic_year fields since we already have the main dropdown
+    return fields.filter(item => item[1] !== 'academic_year').map((item, index) => (
+      <div key={index} className="flex flex-col justify-between">
+        <label htmlFor={item[0]} className="block text-base font-medium text-gray-700">
+          {item[0]}
+        </label>
+        {item[1] === 'text' ? (
+          <input
+            type="text"
+            name={item[0]}
+            id={item[0]}
+            value={formData[item[0]] || ''}
+            onChange={(e) => handleInputChange(e, item[0])}
+            className="mt-1 block w-full text-black bg-white border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
+            disabled={isUploading}
+          />
+        ) : item[1] === 'select' ? (
+          <select
+            name={item[0]}
+            id={item[0]}
+            value={formData[item[0]] || ''}
+            onChange={(e) => handleInputChange(e, item[0])}
+            className="mt-1 block w-full text-black bg-white border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
+            disabled={isUploading}
+          >
+            <option value="">Select an option</option>
+            {item[2]?.map((option, idx) => (
+              <option key={idx} value={option}>{option}</option>
+            ))}
+          </select>
+        ) : null}
+        {formErrors[item[0]] && (
+          <p className="mt-1 text-sm text-red-600 font-medium">{formErrors[item[0]]}</p>
+        )}
+      </div>
+    ));
   };
 
   if (isLoading) {
@@ -154,67 +220,35 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
       </h2>
 
       {/* Academic Year selection */}
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Calendar className="h-5 w-5 text-indigo-600" />
-          <label htmlFor="academicYear" className="block text-base font-medium text-gray-700">
-            Academic Year
-          </label>
+      {fields.some(field => field[1] === 'academic_year') && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="h-5 w-5 text-indigo-600" />
+            <label htmlFor="academicYear" className="block text-base font-medium text-gray-700">
+              Academic Year
+            </label>
+          </div>
+          <select
+            id="academicYear"
+            name="academicYear"
+            value={selectedYear}
+            onChange={handleYearChange}
+            className="mt-1 block w-full max-w-xs text-black bg-white border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
+          >
+            {academicYears.map((year) => (
+              <option key={year} value={year}>
+                {year - 1} - {year}
+              </option>
+            ))}
+          </select>
+          <div className="mt-1 text-sm text-gray-500">
+            Academic year runs from July {selectedYear - 1} to June {selectedYear}
+          </div>
         </div>
-        <select
-          id="academicYear"
-          name="academicYear"
-          value={selectedYear}
-          onChange={handleYearChange}
-          className="mt-1 block w-full max-w-xs text-black bg-white border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
-        >
-          {academicYears.map((year) => (
-            <option key={year} value={year}>
-              {year - 1} - {year}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-sm text-gray-500">
-          Academic year runs from July {selectedYear - 1} to June {selectedYear}
-        </p>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {fields.map((item, index) => (
-          <div key={index} className="flex flex-col justify-between">
-            <label htmlFor={item} className="block text-base font-medium text-gray-700">
-              {item[0]}
-            </label>
-            {item[1] === 'text' ? (
-              <input
-                type="text"
-                name={item}
-                id={item}
-                value={formData[item] || ''}
-                onChange={(e) => handleInputChange(e, item)}
-                className="mt-1 block w-full text-black bg-white border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
-                disabled={isUploading}
-              />
-            ) : item[1] === 'select' ? (
-              <select
-                name={item}
-                id={item}
-                value={formData[item] || ''}
-                onChange={(e) => handleInputChange(e, item)}
-                className="mt-1 block w-full text-black bg-white border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
-                disabled={isUploading}
-              >
-                <option value="">Select an option</option>
-                {item[2]?.map((option, idx) => (
-                  <option key={idx} value={option}>{option}</option>
-                ))}
-              </select>
-            ) : null}
-            {formErrors[item] && (
-              <p className="mt-1 text-sm text-red-600 font-medium">{formErrors[item]}</p>
-            )}
-          </div>
-        ))}
+        {renderFormFields()}
       </div>
 
       <div className="mt-8 p-4 border border-gray-300 rounded-md bg-gray-50">
