@@ -33,7 +33,7 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
     setPageData(array.find(obj => PageID === obj.id));
   }, [PageID]);
 
-  const submitFormData = async (data, fileID) => {
+  const submitFormData = async (data, fileID, selectedYear) => {
     buttonRef.current.click();
     
     const newObject = {
@@ -41,7 +41,7 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
     };
     data.push(newObject);
     try {
-      await api.post(`/save/${PageID}`, { data, userID });
+      await api.post(`/save/${PageID}`, { data, userID, year: selectedYear });
       getData();
     } catch (err) {
       console.error('Save error:', err);
@@ -50,7 +50,14 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
 
   const getData = async () => {
     try {
-      const response = await api.post(`/read/${PageID}`, { userID });
+      // Get the current year as default
+      const currentYear = new Date().getFullYear();
+      const response = await api.post(`/read/${PageID}`, { 
+        userID,
+        year: currentYear 
+      });
+      console.log(`Data received for PageID ${PageID}:`, response.data);
+      console.log('Data type:', typeof response.data, Array.isArray(response.data));
       setFieldData(response.data);
       setFlag(!flag);
     } catch (err) {

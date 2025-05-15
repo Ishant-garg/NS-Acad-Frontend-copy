@@ -3,6 +3,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAssessment } from '../../../hooks/useAssessment';
 import AssessmentGrid from './AssessmentGrid';
 import AssessmentHeader from './AssessmentHeader';
+import CoPoMappingTable from "./CoPoMappingTable";
+import CoPoMappingForm from "./CoPoMappingForm";
 
 const AssessmentForm = () => {
   const {
@@ -51,6 +53,8 @@ const AssessmentForm = () => {
       <Card>
         <CardHeader>
           <CardTitle>COPO Assessment Form</CardTitle>
+          <CoPoMappingTable/>
+          <CoPoMappingForm/>
         </CardHeader>
         <CardContent>
           <AssessmentHeader

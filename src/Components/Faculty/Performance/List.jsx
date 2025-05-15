@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { getCurrentUser } from '../../../utils/auth';
 import api from '../../../utils/api';
 import PdfBadge from './PdfBadge';
+import { AlertCircle, Loader2 } from "lucide-react";
 
 const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) => {
   const [fields, setFields] = useState([]);
@@ -30,6 +31,8 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const user = getCurrentUser();
 
@@ -37,13 +40,30 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
     setIsLoading(true);
     setError(null);
     try {
+      // Get the current year as default
+      const currentYear = new Date().getFullYear();
+      console.log(`Fetching data for page ID: ${currentPage}, user ID: ${user?.id}, year: ${currentYear}`);
       const response = await api.post(`/read/${currentPage}`, { 
-        userID: user?.id 
+        userID: user?.id,
+        year: currentYear
       });
-      setFieldData(response.data);
+      console.log('API Response:', response);
+      console.log('Response data:', response.data);
+      console.log('Response data type:', typeof response.data, Array.isArray(response.data));
+      
+      // Ensure fieldData is always an array
+      if (response.data === null || response.data === undefined) {
+        setFieldData([]);
+      } else if (Array.isArray(response.data)) {
+        setFieldData(response.data);
+      } else {
+        console.error('Unexpected response format:', response.data);
+        setFieldData([]);
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch data');
       console.error('Data fetch error:', err);
+      setError(err.response?.data?.message || 'Failed to fetch data');
+      setFieldData([]);
     } finally {
       setIsLoading(false);
     }
@@ -51,19 +71,35 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
 
   const handleDelete = async (id) => {
     try {
+      setIsDeleting(true);
+      setDeleteError(null);
+      
+      // Get the current year to be consistent with other operations
+      const currentYear = new Date().getFullYear();
+      console.log(`Deleting record with ID: ${id}, for page: ${currentPage}, user: ${user?.id}, year: ${currentYear}`);
+      
       await api.post(`/save/delete/${currentPage}/${id}`, { 
-        userID: user?.id 
+        userID: user?.id,
+        year: currentYear
       });
+      
       await fetchData();
       setShowDeleteDialog(false);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to delete record');
       console.error('Delete error:', err);
+      setDeleteError(err.response?.data?.message || 'Failed to delete record');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   useEffect(() => {
-    if (flag) setFieldData(initialFieldData);
+    if (flag && Array.isArray(initialFieldData)) {
+      setFieldData(initialFieldData);
+    } else if (flag) {
+      // If initialFieldData is not an array, set to empty array
+      setFieldData([]);
+    }
   }, [flag, initialFieldData]);
 
   useEffect(() => {
@@ -135,7 +171,7 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
                   <TableCell className="text-center font-medium text-slate-700">
                     {index + 1}
                   </TableCell>
-                  {item.map((item1, index1) => (
+                  {Array.isArray(item) ? item.map((item1, index1) => (
                     Object.keys(item1)[0] !== 'fileUploaded' ? (
                       <TableCell 
                         key={index1} 
@@ -174,12 +210,21 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
                         </Dialog>
                       </TableCell>
                     )
-                  ))}
+                  )) : (
+                    <TableCell colSpan={fields?.length + 1} className="text-center text-slate-500">
+                      Invalid data format
+                    </TableCell>
+                  )}
                   {user?.role === 'faculty' && (
                     <TableCell className="text-center">
                       <Dialog 
                         open={showDeleteDialog && deleteId === index} 
-                        onOpenChange={(open) => !open && setShowDeleteDialog(false)}
+                        onOpenChange={(open) => {
+                          if (!open) {
+                            setShowDeleteDialog(false);
+                            setDeleteError(null);
+                          }
+                        }}
                       >
                         <DialogTrigger asChild>
                           <Button 
@@ -194,28 +239,58 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
                             <FaTrash className="w-4 h-4" />
                           </Button>
                         </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Confirm Deletion</DialogTitle>
-                            <DialogDescription>
-                              Are you sure you want to delete this record? This action cannot be undone.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <DialogFooter className="mt-4">
-                            <Button
-                              variant="outline"
-                              onClick={() => setShowDeleteDialog(false)}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              onClick={() => handleDelete(index)}
-                              className="ml-2"
-                            >
-                              Delete
-                            </Button>
-                          </DialogFooter>
+                        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-xl shadow-2xl border-0">
+                          <div className="bg-red-50 p-4 border-b border-red-100">
+                            <DialogHeader>
+                              <DialogTitle className="text-xl font-semibold text-red-700 flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                </svg>
+                                Confirm Deletion
+                              </DialogTitle>
+                              <DialogDescription className="text-gray-600 mt-2">
+                                Are you sure you want to delete this record? This action cannot be undone.
+                              </DialogDescription>
+                            </DialogHeader>
+                          </div>
+                          {deleteError && (
+                            <div className="bg-red-50 p-4 border-t border-red-100">
+                              <div className="flex items-center text-red-600">
+                                <AlertCircle className="mr-2 h-4 w-4" />
+                                <span className="text-sm font-medium">{deleteError}</span>
+                              </div>
+                            </div>
+                          )}
+                          <div className="p-6 bg-white">
+                            <DialogFooter className="flex space-x-3 justify-end">
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setShowDeleteDialog(false);
+                                  setDeleteError(null);
+                                }}
+                                className="border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200"
+                                disabled={isDeleting}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                onClick={() => handleDelete(index)}
+                                className="bg-red-600 hover:bg-red-700 text-white transition-all duration-200 focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                                disabled={isDeleting}
+                              >
+                                {isDeleting ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Deleting...
+                                  </>
+                                ) : (
+                                  'Delete'
+                                )}
+                              </Button>
+                            </DialogFooter>
+                          </div>
                         </DialogContent>
                       </Dialog>
                     </TableCell>

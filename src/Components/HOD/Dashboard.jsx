@@ -58,9 +58,6 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // State for tab selection
-  const [currentTab, setCurrentTab] = useState('overview');
-  
   // Stats for dashboard
   const [stats, setStats] = useState({
     facultyCount: 0,
@@ -151,7 +148,7 @@ function Dashboard() {
         
         // Count total entries (including all items in each document's data array)
         const totalEntries = filteredResults.reduce((sum, doc) => {
-          return sum + (doc.data ? doc.data.length : 0);
+          return sum + (Array.isArray(doc.data) ? doc.data.length : 0);
         }, 0);
         
         // Update stats based on filtered documents
@@ -159,9 +156,9 @@ function Dashboard() {
           ...prevStats,
           documentsCount: totalEntries,
           publicationsCount: filteredResults.filter(doc => 
-            doc.type && doc.type.includes('category3')).length,
+            doc.type && doc.type.includes('publication')).length,
           projectsCount: filteredResults.filter(doc => 
-            doc.type && doc.type.includes('category4')).length
+            doc.type && doc.type.includes('Projects')).length
         }));
       }
     } catch (error) {
@@ -189,18 +186,32 @@ function Dashboard() {
     });
   }, [facultyData, searchQuery]);
 
+  // Handle tab change
+  const handleTabChange = useCallback((value) => {
+    // If changing to documents tab and we have department data, fetch documents
+    if (value === 'documents' && department) {
+      console.log("Switching to documents tab - fetching documents");
+      // Force refresh data when switching to documents tab
+      fetchDocumentsData(department, selectedYear);
+    }
+  }, [department, selectedYear, fetchDocumentsData]);
+
   // Effect to fetch initial data
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        await fetchFacultyData();
+        const facultyList = await fetchFacultyData();
+        if (facultyList && facultyList.length > 0) {
+          // Initial fetch of documents
+          await fetchDocumentsData(department, 'overall');
+        }
       } catch (error) {
         console.error('Error in initial data fetch:', error);
       }
     };
     
     fetchInitialData();
-  }, [fetchFacultyData]);
+  }, [fetchFacultyData, fetchDocumentsData, department]);
 
   // Handle year change
   const handleYearChange = useCallback((e) => {
@@ -414,8 +425,26 @@ function Dashboard() {
 
   // Helper function to get document type title
   const getDocumentTypeTitle = useCallback((typeId) => {
-    const docType = array.find((item) => item.id === typeId);
-    return docType ? docType.title : typeId;
+    // Try to find the document type in the array
+    const docType = array.find(item => item.id === typeId);
+    
+    if (docType && docType.title) {
+      return docType.title;
+    }
+    
+    // If typeId contains category names like 'publication' or 'Projects', use a readable name
+    if (typeId.includes('publication')) {
+      return 'Publication';
+    } else if (typeId.includes('Projects')) {
+      return 'Projects';
+    } else if (typeId.includes('ExtraCurricular')) {
+      return 'Extra Curricular Activities';
+    } else if (typeId.includes('Self Appraisel')) {
+      return 'Self Appraisal';
+    }
+    
+    // Fallback
+    return typeId.replace(/-/g, ' ').replace(/([A-Z])/g, ' $1').trim();
   }, []);
 
   // Documents tab content
@@ -466,7 +495,7 @@ function Dashboard() {
             <div className="flex flex-col h-full">
               <div className="mb-6">
                 <h4 className="text-lg font-semibold text-gray-800">
-                  {filteredDocuments.reduce((sum, doc) => sum + (doc.data ? doc.data.length : 0), 0)} {filteredDocuments.reduce((sum, doc) => sum + (doc.data ? doc.data.length : 0), 0) === 1 ? 'Document' : 'Documents'} Found
+                  {stats.documentsCount} {stats.documentsCount === 1 ? 'Document' : 'Documents'} Found
                 </h4>
                 <p className="text-sm text-gray-500">Showing all documents submitted by faculty members</p>
               </div>
@@ -483,6 +512,11 @@ function Dashboard() {
                     {Object.entries(groupedByType).map(([typeId, docs]) => {
                       const typeTitle = getDocumentTypeTitle(typeId);
                       
+                      // Calculate total entries for this document type
+                      const docEntries = docs.reduce((sum, doc) => {
+                        return sum + (Array.isArray(doc.data) ? doc.data.length : 0);
+                      }, 0);
+                      
                       return (
                         <div key={typeId} className="mb-8 pb-6 border-b border-gray-200 last:border-b-0">
                           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
@@ -490,12 +524,12 @@ function Dashboard() {
                               <h3 className="text-lg font-semibold text-blue-700">{typeTitle}</h3>
                             </div>
                             <div className="text-sm bg-blue-100 px-3 py-1 rounded-full text-blue-800">
-                              {docs.reduce((sum, doc) => sum + (doc.data ? doc.data.length : 0), 0)} submissions
+                              {docEntries} submissions
                             </div>
                           </div>
 
                           {/* Create a unified table format for this document type */}
-                          {docs.length > 0 && docs[0].data && docs[0].data.length > 0 && (
+                          {docs.length > 0 && docs.some(doc => Array.isArray(doc.data) && doc.data.length > 0) && (
                             <div className="overflow-x-auto rounded-lg border border-gray-200">
                               <table className="min-w-full divide-y divide-gray-200">
                                 <thead className="bg-blue-50">
@@ -508,66 +542,93 @@ function Dashboard() {
                                     <th className="px-4 py-3 text-left text-xs font-medium text-blue-600 uppercase tracking-wider">
                                       Year
                                     </th>
-                                    {/* Get headers from the first row of the first document data */}
-                                    {docs[0].data[0].map((item, idx) => {
-                                      const headerKey = Object.keys(item)[0];
-                                      const header = headerKey.split(',')[0];
-                                      return (
-                                        <th key={idx} className="px-4 py-3 text-left text-xs font-medium text-blue-600 uppercase tracking-wider">
-                                          {header === "fileUploaded" ? "Document" : header}
-                                        </th>
+                                    
+                                    {/* Extract headers based on the first document with data */}
+                                    {(() => {
+                                      // Find first document with valid data
+                                      const firstDocWithData = docs.find(doc => 
+                                        Array.isArray(doc.data) && doc.data.length > 0 && Array.isArray(doc.data[0])
                                       );
-                                    })}
+                                      
+                                      if (!firstDocWithData) return null;
+                                      
+                                      // Get headers from the first row's data
+                                      return firstDocWithData.data[0].map((item, idx) => {
+                                        if (!item || typeof item !== 'object') return null;
+                                        
+                                        const headerKey = Object.keys(item)[0];
+                                        if (!headerKey) return null;
+                                        
+                                        const header = headerKey.split(',')[0];
+                                        return (
+                                          <th key={idx} className="px-4 py-3 text-left text-xs font-medium text-blue-600 uppercase tracking-wider">
+                                            {header === "fileUploaded" ? "Document" : header}
+                                          </th>
+                                        );
+                                      });
+                                    })()}
                                   </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                  {docs.flatMap((doc, docIndex) => 
-                                    doc.data.map((row, rowIdx) => (
-                                      <tr key={`${docIndex}-${rowIdx}`} className="hover:bg-gray-50">
-                                        {/* Author cell - only show on first row for each document */}
-                                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700">
-                                          {doc.facultyName || "Unknown"}
-                                        </td>
-                                        {/* Year cell */}
-                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                          {doc.year || "N/A"}
-                                        </td>
-                                        {/* Document data cells */}
-                                        {row.map((cell, cellIdx) => {
-                                          const [key, value] = Object.entries(cell)[0];
+                                  {docs.flatMap((doc, docIndex) => {
+                                    if (!Array.isArray(doc.data)) return null;
+                                    
+                                    return doc.data.map((row, rowIdx) => {
+                                      if (!Array.isArray(row)) return null;
+                                      
+                                      return (
+                                        <tr key={`${docIndex}-${rowIdx}`} className="hover:bg-gray-50">
+                                          {/* Author cell */}
+                                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700">
+                                            {doc.facultyName || "Unknown"}
+                                          </td>
+                                          {/* Year cell */}
+                                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                            {doc.year || "N/A"}
+                                          </td>
                                           
-                                          return (
-                                            <td key={cellIdx} className="px-4 py-3 whitespace-nowrap text-sm">
-                                              {key === "fileUploaded" ? (
-                                                <div className="flex items-center space-x-2">
-                                                  <button
-                                                    onClick={() => handleViewFile(value)}
-                                                    className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
-                                                    title="View PDF"
-                                                  >
-                                                    <Eye size={14} className="mr-1" />
-                                                    <span>View</span>
-                                                  </button>
-                                                  <button
-                                                    onClick={() => handleDownloadFile(value)}
-                                                    className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
-                                                    title="Download PDF"
-                                                  >
-                                                    <FileDown size={14} className="mr-1" />
-                                                    <span>Download</span>
-                                                  </button>
-                                                </div>
-                                              ) : typeof value === "object" ? (
-                                                JSON.stringify(value)
-                                              ) : (
-                                                value
-                                              )}
-                                            </td>
-                                          );
-                                        })}
-                                      </tr>
-                                    ))
-                                  )}
+                                          {/* Document data cells */}
+                                          {row.map((cell, cellIdx) => {
+                                            if (!cell || typeof cell !== 'object') return null;
+                                            
+                                            const key = Object.keys(cell)[0];
+                                            if (!key) return null;
+                                            
+                                            const value = cell[key];
+                                            
+                                            return (
+                                              <td key={cellIdx} className="px-4 py-3 whitespace-nowrap text-sm">
+                                                {key === "fileUploaded" ? (
+                                                  <div className="flex items-center space-x-2">
+                                                    <button
+                                                      onClick={() => handleViewFile(value)}
+                                                      className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+                                                      title="View PDF"
+                                                    >
+                                                      <Eye size={14} className="mr-1" />
+                                                      <span>View</span>
+                                                    </button>
+                                                    <button
+                                                      onClick={() => handleDownloadFile(value)}
+                                                      className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+                                                      title="Download PDF"
+                                                    >
+                                                      <FileDown size={14} className="mr-1" />
+                                                      <span>Download</span>
+                                                    </button>
+                                                  </div>
+                                                ) : typeof value === "object" ? (
+                                                  JSON.stringify(value)
+                                                ) : (
+                                                  value
+                                                )}
+                                              </td>
+                                            );
+                                          })}
+                                        </tr>
+                                      );
+                                    });
+                                  }).filter(Boolean)}
                                 </tbody>
                               </table>
                             </div>
@@ -583,31 +644,13 @@ function Dashboard() {
         </CardContent>
       </Card>
     );
-  }, [selectedYear, filteredDocuments, loading, error, department, academicYears, fetchDocumentsData, handleViewFile, handleDownloadFile, getDocumentTypeTitle]);
+  }, [selectedYear, filteredDocuments, loading, error, stats.documentsCount, department, academicYears, fetchDocumentsData, handleViewFile, handleDownloadFile, getDocumentTypeTitle]);
 
   // Handle view faculty details
   const handleViewFacultyDetails = useCallback((faculty) => {
     console.log(`Navigating to faculty details for: ${faculty.username}`);
     navigate(`/faculty/${faculty._id}`);
   }, [navigate]);
-
-  // Handle document tab change
-  const handleTabChange = useCallback((value) => {
-    setCurrentTab(value);
-    // If changing to documents tab and we have department data, fetch documents
-    if (value === 'documents' && department && selectedYear) {
-      fetchDocumentsData(department, selectedYear);
-    }
-  }, [department, selectedYear, fetchDocumentsData]);
-
-  // Component did mount - fetch data on load
-  useEffect(() => {
-    // Initial data load - use 'overall' as default
-    if (department) {
-      fetchFacultyData();
-      fetchDocumentsData(department, 'overall');
-    }
-  }, [department, fetchFacultyData, fetchDocumentsData]);
 
   return (
    
@@ -680,6 +723,7 @@ function Dashboard() {
                         <p className="text-blue-100 text-sm mt-1">Academic Year: {selectedYear === 'overall' ? 'All Years' : academicYears.find(y => y.value === selectedYear)?.label}</p>
                       </div>
                     </div>
+
                   </div>
                 </div>
 
@@ -857,4 +901,4 @@ function Dashboard() {
   );
 }
 
-export default Dashboard;
+export default Dashboard; 
