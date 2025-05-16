@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Loader2, Calendar } from 'lucide-react';
 import { array } from '../assets/GlobalArrays';
 import { getCurrentUser } from '../utils/auth';
 import {
@@ -14,9 +14,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import api from '../utils/api'
-import axios from 'axios';
 import Form from '../Components/Faculty/Performance/Form';
 import List from '../Components/Faculty/Performance/List';
+import PropTypes from 'prop-types';
 
 const Home = ({ currentPage: PageID, changeCurrentPage }) => {
   const buttonRef = useRef(null);
@@ -25,6 +25,19 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
   const [fieldData, setFieldData] = useState([]);
   const [flag, setFlag] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Add state for tracking the currently selected view year
+  const [viewYear, setViewYear] = useState(new Date().getFullYear());
+  
+  // Generate list of academic years (current year and previous 4 years)
+  // Add an "All Years" option at the beginning
+  const academicYears = [
+    { value: 'all', label: 'All Years' },
+    ...Array.from({ length: 6 }, (_, i) => {
+      const year = new Date().getFullYear() - i;
+      return { value: year, label: `${year-1}-${year}` };
+    })
+  ];
 
   const user = getCurrentUser();
   const userID = user.id;
@@ -32,6 +45,13 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
   useEffect(() => {
     setPageData(array.find(obj => PageID === obj.id));
   }, [PageID]);
+
+  // Update this useEffect to use viewYear
+  useEffect(() => {
+    if (PageID) {
+      getData(viewYear);
+    }
+  }, [PageID, viewYear]); // Now depends on viewYear too
 
   const submitFormData = async (data, fileID, selectedYear) => {
     buttonRef.current.click();
@@ -41,27 +61,65 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
     };
     data.push(newObject);
     try {
+      console.log(`Saving data for year: ${selectedYear}`);
       await api.post(`/save/${PageID}`, { data, userID, year: selectedYear });
-      getData();
+      
+      // Set the viewYear to match the submitted year to show the new entry
+      setViewYear(selectedYear);
+      
+      // getData will now use the updated viewYear
+      getData(selectedYear);
     } catch (err) {
       console.error('Save error:', err);
     }
   };
 
-  const getData = async () => {
+  // Update getData to properly handle 'all' year option
+  const getData = async (year = viewYear) => {
     try {
-      // Get the current year as default
-      const currentYear = new Date().getFullYear();
-      const response = await api.post(`/read/${PageID}`, { 
-        userID,
-        year: currentYear 
-      });
+      setIsLoading(true);
+      // Use the provided year or viewYear
+      console.log(`Fetching data for PageID ${PageID}, userID ${userID}, year ${year}`);
+      
+      let response;
+      
+      // Special handling for 'all' years
+      if (year === 'all') {
+        console.log('Fetching ALL years data');
+        // Make a specific API request for all years
+        response = await api.post(`/read/${PageID}/all`, { 
+          userID 
+        });
+      } else {
+        // Normal request for a specific year
+        response = await api.post(`/read/${PageID}`, { 
+          userID,
+          year
+        });
+      }
+      
       console.log(`Data received for PageID ${PageID}:`, response.data);
-      console.log('Data type:', typeof response.data, Array.isArray(response.data));
-      setFieldData(response.data);
+      
+      // Ensure fieldData is always an array
+      if (Array.isArray(response.data)) {
+        setFieldData(response.data);
+        console.log(`Setting fieldData to array of length ${response.data.length}`);
+      } else if (response.data) {
+        // If data exists but is not an array, wrap it
+        setFieldData([response.data]);
+        console.log('Setting fieldData to array with single item');
+      } else {
+        // If no data or null, set empty array
+        setFieldData([]);
+        console.log('Setting fieldData to empty array');
+      }
+      
       setFlag(!flag);
     } catch (err) {
       console.error('Read error:', err);
+      setFieldData([]); // Reset to empty array on error
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -74,11 +132,18 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
     buttonRef2.current.click();
   };
 
+  // Handle year change
+  const handleYearChange = (e) => {
+    const selectedYear = e.target.value;
+    // Convert to number only if it's not 'all'
+    setViewYear(selectedYear === 'all' ? 'all' : parseInt(selectedYear));
+  };
+
   return (
     <div className="flex-1 mt-[10vh] min-h-">
       {/* Enhanced Header Area */}
       <div className="h-20 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between px-8">
-        <div className="flex items-center space-x-4 w-[90%] ">
+        <div className="flex items-center space-x-4 w-[90%]">
           <h1 className="text-xl font-bold text-slate-800 w-[80%]">
             {pageData.title || 'Dashboard'}
           </h1>
@@ -90,7 +155,7 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
         </div>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <div className="inline-flex items-center gap-2 w-48 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md font-medium">
+            <div className="inline-flex items-center gap-2 w-48 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md font-medium cursor-pointer">
               <Plus className="w-5 h-5" />
               Add New Entry
             </div>
@@ -124,6 +189,37 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
       </div>
 
       <div className="p-8">
+        {/* Improved Year selector */}
+        <div className="mb-6 flex justify-end">
+          <div className="w-64">
+            <div className="flex items-center gap-2 mb-1">
+              <Calendar className="h-4 w-4 text-blue-600" />
+              <label htmlFor="viewYear" className="text-sm font-medium text-gray-700">
+                Academic Year
+              </label>
+            </div>
+            <div className="relative">
+              <select
+                id="viewYear"
+                value={viewYear}
+                onChange={handleYearChange}
+                className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-10 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm cursor-pointer"
+              >
+                {academicYears.map((year) => (
+                  <option key={year.value} value={year.value}>
+                    {year.label}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200 hover:shadow-md transition-shadow duration-200">
             <div className="flex items-center space-x-4">
@@ -163,8 +259,12 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
                 </svg>
               </div>
               <div>
-                <h3 className="text-sm font-medium text-slate-600 mb-1">Category</h3>
-                <p className="text-3xl font-bold text-slate-900">{pageData.category || '-'}</p>
+                <h3 className="text-sm font-medium text-slate-600 mb-1">
+                  {viewYear === 'all' ? 'All Years' : viewYear === new Date().getFullYear() ? 'Current Year' : 'Selected Year'}
+                </h3>
+                <p className="text-3xl font-bold text-slate-900">
+                  {viewYear === 'all' ? 'All' : viewYear}
+                </p>
               </div>
             </div>
           </div>
@@ -178,11 +278,18 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
             pageFields={pageData.fields}
             fieldData={fieldData}
             flag={flag}
+            selectedYear={viewYear}
           />
         </div>
       </div>
     </div>
   );
+};
+
+// Add prop validation
+Home.propTypes = {
+  currentPage: PropTypes.string.isRequired,
+  changeCurrentPage: PropTypes.func.isRequired
 };
 
 export default Home;

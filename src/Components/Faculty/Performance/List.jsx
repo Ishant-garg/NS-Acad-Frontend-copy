@@ -24,12 +24,12 @@ import api from '../../../utils/api';
 import PdfBadge from './PdfBadge';
 import { AlertCircle, Loader2 } from "lucide-react";
 
-const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) => {
+const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag, selectedYear }) => {
   const [fields, setFields] = useState([]);
   const [fieldData, setFieldData] = useState([]);
   const [deleteId, setDeleteId] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -40,18 +40,22 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
     setIsLoading(true);
     setError(null);
     try {
-      // Get the current year as default
-      const currentYear = new Date().getFullYear();
-      console.log(`Fetching data for page ID: ${currentPage}, user ID: ${user?.id}, year: ${currentYear}`);
-      const response = await api.post(`/read/${currentPage}`, { 
-        userID: user?.id,
-        year: currentYear
-      });
-      console.log('API Response:', response);
-      console.log('Response data:', response.data);
-      console.log('Response data type:', typeof response.data, Array.isArray(response.data));
+      const yearToUse = selectedYear && selectedYear !== 'all' 
+        ? selectedYear 
+        : new Date().getFullYear();
+        
+      console.log(`Refreshing data after deletion: page ID: ${currentPage}, user ID: ${user?.id}, year: ${yearToUse}`);
       
-      // Ensure fieldData is always an array
+      let requestData = {
+        userID: user?.id
+      };
+      
+      if (selectedYear !== 'all') {
+        requestData.year = yearToUse;
+      }
+      
+      const response = await api.post(`/read/${currentPage}`, requestData);
+      
       if (response.data === null || response.data === undefined) {
         setFieldData([]);
       } else if (Array.isArray(response.data)) {
@@ -74,13 +78,15 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
       setIsDeleting(true);
       setDeleteError(null);
       
-      // Get the current year to be consistent with other operations
-      const currentYear = new Date().getFullYear();
-      console.log(`Deleting record with ID: ${id}, for page: ${currentPage}, user: ${user?.id}, year: ${currentYear}`);
+      const yearToUse = selectedYear && selectedYear !== 'all' 
+        ? selectedYear 
+        : new Date().getFullYear();
+        
+      console.log(`Deleting record with ID: ${id}, for page: ${currentPage}, user: ${user?.id}, year: ${yearToUse}`);
       
       await api.post(`/save/delete/${currentPage}/${id}`, { 
         userID: user?.id,
-        year: currentYear
+        year: yearToUse
       });
       
       await fetchData();
@@ -94,18 +100,22 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
   };
 
   useEffect(() => {
-    if (flag && Array.isArray(initialFieldData)) {
+    console.log('List component received data:', initialFieldData);
+    if (Array.isArray(initialFieldData)) {
       setFieldData(initialFieldData);
-    } else if (flag) {
-      // If initialFieldData is not an array, set to empty array
+      setIsLoading(false);
+    } else if (initialFieldData) {
+      setFieldData([initialFieldData]);
+      setIsLoading(false);
+    } else {
       setFieldData([]);
+      setIsLoading(false);
     }
-  }, [flag, initialFieldData]);
+  }, [initialFieldData, flag]);
 
   useEffect(() => {
     setFields(pageFields);
-    fetchData();
-  }, [pageFields, currentPage]);
+  }, [pageFields]);
 
   if (error) {
     return (
@@ -114,6 +124,10 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
       </div>
     );
   }
+
+  console.log('Rendering List component with data:', fieldData, 'Selected year:', selectedYear);
+
+  const showYearColumn = selectedYear === 'all';
 
   return (
     <div className="p-6 bg-gradient-to-br from-slate-50 to-blue-50">
@@ -131,6 +145,11 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
               <TableHead className="text-center font-semibold text-slate-100">
                 S.NO.
               </TableHead>
+              {showYearColumn && (
+                <TableHead className="text-center font-semibold text-slate-100">
+                  Academic Year
+                </TableHead>
+              )}
               {fields?.map((item, index) => (
                 <TableHead 
                   key={index}
@@ -154,7 +173,7 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
             {isLoading ? (
               <TableRow>
                 <TableCell 
-                  colSpan={fields?.length + 3}
+                  colSpan={showYearColumn ? fields?.length + 4 : fields?.length + 3}
                   className="h-32 text-center"
                 >
                   <div className="animate-pulse flex justify-center">
@@ -171,8 +190,19 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
                   <TableCell className="text-center font-medium text-slate-700">
                     {index + 1}
                   </TableCell>
-                  {Array.isArray(item) ? item.map((item1, index1) => (
-                    Object.keys(item1)[0] !== 'fileUploaded' ? (
+                  {showYearColumn && (
+                    <TableCell className="text-center font-medium text-slate-700">
+                      {Array.isArray(item) && item.find(obj => obj.yearAdded)?.yearAdded 
+                        ? `${item.find(obj => obj.yearAdded).yearAdded - 1}-${item.find(obj => obj.yearAdded).yearAdded}` 
+                        : '-'}
+                    </TableCell>
+                  )}
+                  {Array.isArray(item) ? item.map((item1, index1) => {
+                    if (Object.keys(item1)[0] === 'yearAdded') {
+                      return null;
+                    }
+                    
+                    return Object.keys(item1)[0] !== 'fileUploaded' ? (
                       <TableCell 
                         key={index1} 
                         className="text-center text-slate-600"
@@ -209,8 +239,8 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
                           </DialogContent>
                         </Dialog>
                       </TableCell>
-                    )
-                  )) : (
+                    );
+                  }).filter(Boolean) : (
                     <TableCell colSpan={fields?.length + 1} className="text-center text-slate-500">
                       Invalid data format
                     </TableCell>
@@ -277,7 +307,7 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
                               <Button
                                 variant="destructive"
                                 onClick={() => handleDelete(index)}
-                                className="bg-red-600 hover:bg-red-700 text-white transition-all duration-200 focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                                className="bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
                                 disabled={isDeleting}
                               >
                                 {isDeleting ? (
@@ -286,7 +316,7 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
                                     Deleting...
                                   </>
                                 ) : (
-                                  'Delete'
+                                  "Delete"
                                 )}
                               </Button>
                             </DialogFooter>
@@ -300,8 +330,8 @@ const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag }) =>
             ) : (
               <TableRow>
                 <TableCell 
-                  colSpan={fields?.length + 3}
-                  className="h-32 text-center text-slate-500"
+                  colSpan={showYearColumn ? fields?.length + 4 : fields?.length + 3} 
+                  className="h-32 text-center text-slate-500 py-12"
                 >
                   No records found
                 </TableCell>
