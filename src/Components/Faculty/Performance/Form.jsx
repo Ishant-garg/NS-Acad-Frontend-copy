@@ -96,7 +96,7 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
       formData.append('userId', user.id);
 
       const response = await axios.post(
-        `http://localhost:8000/file/upload/${user.id}`,
+        `https://ns-acad-backend.onrender.com/file/upload/${user.id}`,
         formData,
         {
             headers: {
