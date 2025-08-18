@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from "react"; // Import useMemo
 import { useParams, useNavigate } from "react-router-dom";
-import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label"; // Import Label
+import { Card, CardContent } from "@/Components/ui/card";
+import { Label } from "@/Components/ui/label"; // Import Label
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from "@/components/ui/select"; // Import Select components
+} from "@/Components/ui/select"; // Import Select components
 import { User, ArrowLeft, Eye, FileDown, Filter } from "lucide-react"; // Added Filter icon
 import api from "../../utils/api";
 import { array } from "../../assets/GlobalArrays";

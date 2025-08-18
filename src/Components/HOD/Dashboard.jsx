@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Card,
   CardContent,
-} from "@/components/ui/card";
+} from "@/Components/ui/card";
 import {
   Table,
   TableBody,
@@ -12,11 +12,11 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+} from "@/Components/ui/table";
+import { Input } from "@/Components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/Components/ui/tabs";
+import { Button } from "@/Components/ui/button";
+import { ScrollArea } from "@/Components/ui/scroll-area";
 import api from '../../utils/api';
 import { fetchUserData } from '../../utils/auth';
 import { useToast } from "@/hooks/use-toast";

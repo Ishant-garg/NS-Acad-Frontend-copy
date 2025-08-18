@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-import { Plus, Loader2, Calendar } from 'lucide-react';
-import { array } from '../assets/GlobalArrays';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import PropTypes from 'prop-types';
+import { Plus, Loader2, Calendar, ClipboardList, AlertCircle } from 'lucide-react';
+
+// Local Imports
+import { array as PageConfigArray } from '../assets/GlobalArrays';
 import { getCurrentUser } from '../utils/auth';
+import api from '../utils/api';
+
+// UI Components
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,283 +19,279 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import api from '../utils/api'
 import Form from '../Components/Faculty/Performance/Form';
 import List from '../Components/Faculty/Performance/List';
-import PropTypes from 'prop-types';
 
+// --- Constants ---
+const ALL_YEARS_VALUE = 'all';
+const ACADEMIC_YEAR_RANGE = 6; // Display last 6 years + "All"
+
+/**
+ * The main component for displaying and managing performance data entries.
+ * Fully responsive for mobile, tablet, and desktop devices.
+ */
 const Home = ({ currentPage: PageID, changeCurrentPage }) => {
-  const buttonRef = useRef(null);
-  const buttonRef2 = useRef(null);
-  const [pageData, setPageData] = useState("");
-  const [fieldData, setFieldData] = useState([]);
-  const [flag, setFlag] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  
-  // Add state for tracking the currently selected view year
-  const [viewYear, setViewYear] = useState(new Date().getFullYear());
-  
-  // Generate list of academic years (current year and previous 4 years)
-  // Add an "All Years" option at the beginning
-  const academicYears = [
-    { value: 'all', label: 'All Years' },
-    ...Array.from({ length: 6 }, (_, i) => {
-      const year = new Date().getFullYear() - i;
-      return { value: year, label: `${year-1}-${year}` };
-    })
-  ];
+  // --- Refs ---
+  const alertDialogActionRef = useRef(null);
+  const alertDialogCancelRef = useRef(null);
 
+  // --- State ---
+  const [pageData, setPageData] = useState({});
+  const [fieldData, setFieldData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [viewYear, setViewYear] = useState(new Date().getFullYear());
+
+  // --- Derived State & Data ---
   const user = getCurrentUser();
   const userID = user.id;
 
+  const academicYears = useMemo(() => [
+    { value: ALL_YEARS_VALUE, label: 'All Years' },
+    ...Array.from({ length: ACADEMIC_YEAR_RANGE }, (_, i) => {
+      const year = new Date().getFullYear() - i;
+      return { value: year, label: `AY ${year - 1}-${year}` };
+    })
+  ], []);
+
+  // --- Effects ---
   useEffect(() => {
-    setPageData(array.find(obj => PageID === obj.id));
+    const currentPageData = PageConfigArray.find(obj => PageID === obj.id);
+    setPageData(currentPageData || {});
   }, [PageID]);
 
-  // Update this useEffect to use viewYear
   useEffect(() => {
-    if (PageID) {
+    if (PageID && userID) {
       getData(viewYear);
     }
-  }, [PageID, viewYear]); // Now depends on viewYear too
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [PageID, viewYear, userID]);
 
-  const submitFormData = async (data, fileID, selectedYear) => {
-    buttonRef.current.click();
-    
-    const newObject = {
-      "fileUploaded": fileID
-    };
-    data.push(newObject);
-    try {
-      console.log(`Saving data for year: ${selectedYear}`);
-      await api.post(`/save/${PageID}`, { data, userID, year: selectedYear });
-      
-      // Set the viewYear to match the submitted year to show the new entry
-      setViewYear(selectedYear);
-      
-      // getData will now use the updated viewYear
-      getData(selectedYear);
-    } catch (err) {
-      console.error('Save error:', err);
-    }
-  };
-
-  // Update getData to properly handle 'all' year option
+  // --- Data Fetching & Submission ---
   const getData = async (year = viewYear) => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      // Use the provided year or viewYear
-      console.log(`Fetching data for PageID ${PageID}, userID ${userID}, year ${year}`);
-      
-      let response;
-      
-      // Special handling for 'all' years
-      if (year === 'all') {
-        console.log('Fetching ALL years data');
-        // Make a specific API request for all years
-        response = await api.post(`/read/${PageID}/all`, { 
-          userID 
-        });
-      } else {
-        // Normal request for a specific year
-        response = await api.post(`/read/${PageID}`, { 
-          userID,
-          year
-        });
+      const endpoint = year === ALL_YEARS_VALUE ? `/read/${PageID}/all` : `/read/${PageID}`;
+      const payload = { userID };
+      if (year !== ALL_YEARS_VALUE) {
+        payload.year = year;
       }
-      
-      console.log(`Data received for PageID ${PageID}:`, response.data);
-      
-      // Ensure fieldData is always an array
-      if (Array.isArray(response.data)) {
-        setFieldData(response.data);
-        console.log(`Setting fieldData to array of length ${response.data.length}`);
-      } else if (response.data) {
-        // If data exists but is not an array, wrap it
-        setFieldData([response.data]);
-        console.log('Setting fieldData to array with single item');
-      } else {
-        // If no data or null, set empty array
-        setFieldData([]);
-        console.log('Setting fieldData to empty array');
-      }
-      
-      setFlag(!flag);
+      const response = await api.post(endpoint, payload);
+      setFieldData(Array.isArray(response.data) ? response.data : []);
     } catch (err) {
-      console.error('Read error:', err);
-      setFieldData([]); // Reset to empty array on error
+      console.error('Error fetching data:', err);
+      setFieldData([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const cancel = async (fileid) => {
-    setIsLoading(true);
-    if (fileid && fileid !== "") {
-      await api.get(`/file/${fileid}`);
+  const submitFormData = async (data, fileID, selectedYear) => {
+    alertDialogActionRef.current?.click();
+    const payload = {
+      data: [...data, { "fileUploaded": fileID }],
+      userID,
+      year: selectedYear,
+    };
+    try {
+      console.log("Submitting form data:", payload.data);
+      await api.post(`/save/${PageID}`, payload);
+      if (viewYear !== selectedYear) {
+        setViewYear(selectedYear);
+      } else {
+        getData(selectedYear);
+      }
+    } catch (err) {
+      console.error('Error saving form data:', err);
     }
-    setIsLoading(false);
-    buttonRef2.current.click();
   };
 
-  // Handle year change
-  const handleYearChange = (e) => {
-    const selectedYear = e.target.value;
-    // Convert to number only if it's not 'all'
-    setViewYear(selectedYear === 'all' ? 'all' : parseInt(selectedYear));
+  const cancelForm = async (fileid) => {
+    setIsLoading(true);
+    if (fileid) {
+      try {
+        await api.get(`/file/${fileid}`);
+      } catch (err) {
+        console.error('Error handling file on cancel:', err);
+      }
+    }
+    alertDialogCancelRef.current?.click();
+    setIsLoading(false);
   };
+  
+  // --- Event Handlers ---
+  const handleYearChange = (e) => {
+    const selectedValue = e.target.value;
+    setViewYear(selectedValue === ALL_YEARS_VALUE ? ALL_YEARS_VALUE : parseInt(selectedValue));
+  };
+  
+  // --- Render ---
+  return (
+    <div className="flex-1 mt-[10vh] bg-slate-50 min-h-[90vh]">
+      
+      {/* Page Header - Responsive */}
+      <header className="bg-white border-b border-slate-200 shadow-sm sticky top-[10vh] z-10">
+        <div className="mx-auto max-w-7xl px-4 sm:px-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-4 sm:h-20">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                {pageData.title || 'Loading...'}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+              {/* Year Selector */}
+              <div className="relative flex-grow sm:flex-grow-0">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
+                <select
+                  id="viewYear"
+                  value={viewYear}
+                  onChange={handleYearChange}
+                  className="w-full sm:w-48 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-10 pr-8 text-slate-700 font-medium shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm cursor-pointer transition-colors"
+                  aria-label="Select Academic Year"
+                >
+                  {academicYears.map((yearOpt) => (
+                    <option key={yearOpt.value} value={yearOpt.value}>
+                      {yearOpt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Add New Entry Dialog */}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                    <Plus className="w-5 h-5" />
+                    <span className="hidden sm:inline">ADD</span>
+                    <span className="sm:hidden">ADD</span>
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="w-[95vw] rounded-lg sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-xl font-bold text-slate-900">
+                      Add New {pageData.title} Entry
+                    </AlertDialogTitle>
+                    <AlertDialogDescription asChild>
+                      <div className="text-base text-slate-600 max-h-[70vh] overflow-y-auto pr-2">
+                        <Form
+                          pageFields={pageData.fields} 
+                          submitFormData={submitFormData} 
+                          cancel={cancelForm}
+                          isLoading={isLoading}
+                        />
+                      </div>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter className="pt-4">
+                    <AlertDialogCancel className="hidden" ref={alertDialogCancelRef} />
+                    <AlertDialogAction className="hidden" ref={alertDialogActionRef} />
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content - Responsive */}
+      <main className="p-4 sm:p-8 mx-auto max-w-7xl">
+        {/* Stats Cards */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <StatCard title="Total Entries" value={fieldData.length} icon={ClipboardList} color="blue" isLoading={isLoading} />
+          <StatCard title="Last Updated" value={fieldData[0]?.timestamp ? new Date(fieldData[0].timestamp).toLocaleDateString() : 'N/A'} icon={Calendar} color="green" isLoading={isLoading} />
+          <StatCard title="Viewing Year" value={academicYears.find(y => y.value === viewYear)?.label || viewYear} icon={Calendar} color="purple" isLoading={isLoading} />
+        </section>
+
+        {/* Entries List */}
+        <section className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-5 border-b border-slate-200 bg-slate-50/50">
+            <h2 className="text-lg font-semibold text-slate-800">
+              {pageData.title} Records
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              Showing records for {academicYears.find(y => y.value === viewYear)?.label || viewYear}.
+            </p>
+          </div>
+          <div className="min-h-[400px]">
+            {isLoading ? (
+              <LoadingState />
+            ) : fieldData.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div className="overflow-x-auto">
+                <List
+                  changeCurrentPage={changeCurrentPage}
+                  currentPage={PageID}
+                  pageFields={pageData.fields}
+                  fieldData={fieldData}
+                  selectedYear={viewYear}
+                />
+              </div>
+            )}
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+};
+
+// --- Sub-components for better readability ---
+
+const StatCard = ({ title, value, icon: Icon, color, isLoading }) => {
+  const colorClasses = {
+    blue: { bg: 'bg-blue-100', text: 'text-blue-600' },
+    green: { bg: 'bg-green-100', text: 'text-green-600' },
+    purple: { bg: 'bg-purple-100', text: 'text-purple-600' },
+  };
+  const classes = colorClasses[color] || colorClasses.blue;
 
   return (
-    <div className="flex-1 mt-[10vh] min-h-">
-      {/* Enhanced Header Area */}
-      <div className="h-20 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between px-8">
-        <div className="flex items-center space-x-4 w-[90%]">
-          <h1 className="text-xl font-bold text-slate-800 w-[80%]">
-            {pageData.title || 'Dashboard'}
-          </h1>
-          {pageData.category && (
-            <span className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 rounded-full">
-              {pageData.category}
-            </span>
-          )}
-        </div>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <div className="inline-flex items-center gap-2 w-48 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md font-medium cursor-pointer">
-              <Plus className="w-5 h-5" />
-              Add New Entry
-            </div>
-          </AlertDialogTrigger>
-          <AlertDialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-xl font-bold text-slate-900">
-                Add New Entry
-              </AlertDialogTitle>
-              <AlertDialogDescription className="max-h-[70vh] overflow-y-auto pr-2">
-                {isLoading ? (
-                  <div className="flex items-center justify-center p-8">
-                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                  </div>
-                ) : (
-                  <Form
-                    pageFields={pageData.fields} 
-                    submitFormData={submitFormData} 
-                    cancel={cancel}
-                    isLoading={isLoading}
-                  />
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="hidden" ref={buttonRef2} />
-              <AlertDialogAction className="hidden" ref={buttonRef} />
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-
-      <div className="p-8">
-        {/* Improved Year selector */}
-        <div className="mb-6 flex justify-end">
-          <div className="w-64">
-            <div className="flex items-center gap-2 mb-1">
-              <Calendar className="h-4 w-4 text-blue-600" />
-              <label htmlFor="viewYear" className="text-sm font-medium text-gray-700">
-                Academic Year
-              </label>
-            </div>
-            <div className="relative">
-              <select
-                id="viewYear"
-                value={viewYear}
-                onChange={handleYearChange}
-                className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-10 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm cursor-pointer"
-              >
-                {academicYears.map((year) => (
-                  <option key={year.value} value={year.value}>
-                    {year.label}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </div>
-            </div>
+    <div className="bg-white rounded-xl border border-slate-200 p-5 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
+          <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+            {isLoading ? <Loader2 className="h-8 w-8 animate-spin text-slate-400" /> : value}
           </div>
         </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200 hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-slate-600 mb-1">Total Entries</h3>
-                <p className="text-3xl font-bold text-slate-900">{fieldData.length}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200 hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-green-50 rounded-lg">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-slate-600 mb-1">Last Updated</h3>
-                <p className="text-3xl font-bold text-slate-900">
-                  {fieldData[0]?.timestamp ? new Date(fieldData[0].timestamp).toLocaleDateString() : '-'}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200 hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-purple-50 rounded-lg">
-                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-slate-600 mb-1">
-                  {viewYear === 'all' ? 'All Years' : viewYear === new Date().getFullYear() ? 'Current Year' : 'Selected Year'}
-                </h3>
-                <p className="text-3xl font-bold text-slate-900">
-                  {viewYear === 'all' ? 'All' : viewYear}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Enhanced List Component */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <List
-            changeCurrentPage={changeCurrentPage}
-            currentPage={PageID}
-            pageFields={pageData.fields}
-            fieldData={fieldData}
-            flag={flag}
-            selectedYear={viewYear}
-          />
+        <div className={`p-3 rounded-full ${classes.bg}`}>
+          <Icon className={`w-6 h-6 ${classes.text}`} />
         </div>
       </div>
     </div>
   );
 };
 
-// Add prop validation
+const LoadingState = () => (
+  <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-slate-500 p-4">
+    <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+    <p className="mt-4 text-lg font-medium">Loading Entries...</p>
+    <p>Please wait a moment.</p>
+  </div>
+);
+
+const EmptyState = () => (
+  <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center text-slate-500 p-8">
+    <AlertCircle className="w-16 h-16 text-slate-400 mb-4" />
+    <h3 className="text-xl font-semibold text-slate-800">No Entries Found</h3>
+    <p className="mt-2 max-w-sm">
+      There are no records for the selected academic year. You can add one using the button above.
+    </p>
+  </div>
+);
+
+
+// --- Prop Validation ---
 Home.propTypes = {
   currentPage: PropTypes.string.isRequired,
-  changeCurrentPage: PropTypes.func.isRequired
+  changeCurrentPage: PropTypes.func.isRequired,
+};
+
+StatCard.propTypes = {
+  title: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  icon: PropTypes.elementType.isRequired,
+  color: PropTypes.string,
+  isLoading: PropTypes.bool.isRequired,
 };
 
 export default Home;
