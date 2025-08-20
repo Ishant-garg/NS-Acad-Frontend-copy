@@ -14,6 +14,7 @@ import CoAnalysis from './Pages/Faculty/COPO/CoAnalysis';
 import SideBar from './Components/Faculty/Performance/SideBar';
 import Navbar from './Components/Faculty/Performance/Navbar';
 import Profile from './Components/Faculty/Performance/Profile';
+import PDFTestPage from './Components/Faculty/ApaarReport/PDFTestPage';
 
 // ============================================================================
 // 1. UTILITY HOOK FOR MEDIA QUERIES (Essential for responsive inline styles)
@@ -194,6 +195,7 @@ const App = () => {
             <Route path="/profile" element={<Profile />} />
             <Route path="/copo" element={<CoAnalysis />} />
             <Route path="/test" element={<Testing />} />
+            <Route path="/pdf-test" element={<PDFTestPage />} />
           </Route>
         );
       case 'hod':
