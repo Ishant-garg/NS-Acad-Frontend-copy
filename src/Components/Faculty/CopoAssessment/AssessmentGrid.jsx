@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
+import api from '../../../utils/api';
 
 const AssessmentGrid = ({
   type, // 'tms', 'TCA', or 'TES'
@@ -150,7 +151,7 @@ const AssessmentGrid = ({
       }
 
       // Corrected URL
-      const response = await axios.get(`http://localhost:8000/api/assessments/${facultyId}`, { params });
+      const response = await api.get(`/api/assessments/${facultyId}`, { params });
 
       if (response.data) {
         const fetchedData = response.data;
@@ -720,7 +721,7 @@ const AssessmentGrid = ({
 
     try {
       // Use the POST route defined in Express
-      const response = await axios.post('http://localhost:8000/api/assessments', assessmentPayload);
+      const response = await api.post('/api/assessments', assessmentPayload);
 
       setSaveStatus('Saved successfully!');
       // Optionally refetch data after save or update state based on response

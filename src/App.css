@@ -1,24 +1,34 @@
+/* App.css */
 /* #d2d4da */
 
 .app-container {
   display: flex;
+  position: relative; /* Added for positioning context of mobile sidebar */
+  height: 100vh;
+  overflow: hidden;
 }
+
 .app-container-2 {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
 }
   
-  .sidebar {
-    width: 20vw;
-  }
+.sidebar {
+  width: 20vw; /* This will be used for desktop */
+  background-color: #ffffff; /* Example background */
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* Example shadow */
+}
   
-  .content {
-    width: 80vw;
-    background-color: white;
-    height: 100vh;
-    align-self: center;
-    justify-self: center;
-  }
-  .querySection{
-   
-  }
+.content {
+  width: 80vw; /* This will be used for desktop */
+  background-color: #f1f5f9; /* A light slate background for content */
+  height: 100vh;
+  display: flex; /* Use flexbox for inner layout */
+  flex-direction: column; /* Stack navbar and main content */
+}
+
+.querySection {
+  padding: 2rem;
+  flex-grow: 1;
+}

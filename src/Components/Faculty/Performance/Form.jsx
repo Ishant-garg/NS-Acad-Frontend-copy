@@ -2,8 +2,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { AlertCircle, Upload, Loader2, Calendar } from "lucide-react";
 import { getCurrentUser } from '../../../utils/auth';
 import './Loader.css';
-import axios from 'axios';
 import PropTypes from 'prop-types';
+import api from '../../../utils/api';
 
 const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
   const [fields, setFields] = useState([]);
@@ -95,8 +95,11 @@ const Form = ({ pageFields, submitFormData, cancel, isLoading }) => {
       formData.append('file', fileData);
       formData.append('userId', user.id);
 
-      const response = await axios.post(
+       const response = await axios.post(
         `https://ns-acad-backend.onrender.com/file/upload/${user.id}`,
+ 
+      
+ 
         formData,
         {
             headers: {
