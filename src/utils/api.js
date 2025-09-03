@@ -1,6 +1,6 @@
 import axios from 'axios';
 const api = axios.create({
-  baseURL: 'https://ns-acad-backend.onrender.com/,
+  baseURL: 'https://ns-acad-backend.onrender.com/',
   headers: {
     'Content-Type': 'application/json'
   },
