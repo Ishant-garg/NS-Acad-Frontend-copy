@@ -8,7 +8,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@/Components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -17,8 +17,8 @@ import {
   DialogTrigger,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+} from "@/Components/ui/dialog";
+import { Button } from "@/Components/ui/button";
 import { getCurrentUser } from '../../../utils/auth';
 import api from '../../../utils/api';
 import PdfBadge from './PdfBadge';
