@@ -15,7 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from "@/Components/ui/alert-dialog";
 import Form from '../Components/Faculty/Performance/Form';
 import List from '../Components/Faculty/Performance/List';
 
