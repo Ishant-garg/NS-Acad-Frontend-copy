@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { User, Settings, LogOut } from 'lucide-react';
+import { User, Settings, LogOut, ClipboardList } from 'lucide-react';
 import { fetchUserData } from '../../../utils/auth';
 import { useNavigate } from 'react-router-dom';
 
@@ -39,7 +39,7 @@ const Navbar = ({ handleLogout }) => {
   if (!userData) return null;
 
   return (
-    <nav className="fixed top-0 right-0 z-50 ml-[20%] bg-white border-b border-slate-200 w-[calc(80%)]">
+    <nav className="fixed top-0 right-0 z-50 ml-[20vw] bg-white border-b border-slate-200 w-[calc(80vw)]">
       <div className="h-16 px-6 flex items-center justify-between">
         <div className="flex items-center" />
         
@@ -75,6 +75,16 @@ const Navbar = ({ handleLogout }) => {
                 >
                   <Settings className="w-4 h-4 text-slate-500" />
                   Profile Settings
+                </button>
+                <button 
+                  className="w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"
+                  onClick={() => {
+                    setIsOpen(false);
+                    navigate('/report-generator'); 
+                  }}
+                >
+                  <ClipboardList className="w-4 h-4 text-slate-500" />
+                  Report Generator
                 </button>
                 
                 <button 

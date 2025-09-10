@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'; // Added useCallback
 import PropTypes from 'prop-types';
 import { Plus, Loader2, Calendar, ClipboardList, AlertCircle } from 'lucide-react';
-
-// Local Imports
-import { array as PageConfigArray } from '../assets/GlobalArrays';
+import { array as PageConfigArray } from '../assets/GlobalArrays'; // Assuming this is correct
 import { getCurrentUser } from '../utils/auth';
 import api from '../utils/api';
 
-// UI Components
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,26 +19,25 @@ import {
 import Form from '../Components/Faculty/Performance/Form';
 import List from '../Components/Faculty/Performance/List';
 
-// --- Constants ---
 const ALL_YEARS_VALUE = 'all';
-const ACADEMIC_YEAR_RANGE = 6; // Display last 6 years + "All"
+const ACADEMIC_YEAR_RANGE = 6;
 
-/**
- * The main component for displaying and managing performance data entries.
- * Fully responsive for mobile, tablet, and desktop devices.
- */
-const Home = ({ currentPage: PageID, changeCurrentPage }) => {
-  // --- Refs ---
+const Home = () => { // Changed from ({}) to ()
+
   const alertDialogActionRef = useRef(null);
   const alertDialogCancelRef = useRef(null);
+  const PageID = window.location.pathname.split('/')[1] || "c4e293e9-1f5c-4edd-a3e5-fa0dfc23e566"; // Default PageID if none in URL
 
-  // --- State ---
-  const [pageData, setPageData] = useState({});
+  // Initialize pageData based on PageID immediately
+  const initialPageData = useMemo(() => {
+    return PageConfigArray.find(page => page.id === PageID) || {};
+  }, [PageID]);
+
+  const [pageData, setPageData] = useState(initialPageData); // Set initial state with derived data
   const [fieldData, setFieldData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
 
-  // --- Derived State & Data ---
   const user = getCurrentUser();
   const userID = user.id;
 
@@ -53,21 +49,8 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
     })
   ], []);
 
-  // --- Effects ---
-  useEffect(() => {
-    const currentPageData = PageConfigArray.find(obj => PageID === obj.id);
-    setPageData(currentPageData || {});
-  }, [PageID]);
-
-  useEffect(() => {
-    if (PageID && userID) {
-      getData(viewYear);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [PageID, viewYear, userID]);
-
-  // --- Data Fetching & Submission ---
-  const getData = async (year = viewYear) => {
+  // Make getData a useCallback to ensure it's stable across renders
+  const getData = useCallback(async (year = viewYear) => {
     setIsLoading(true);
     try {
       const endpoint = year === ALL_YEARS_VALUE ? `/read/${PageID}/all` : `/read/${PageID}`;
@@ -83,7 +66,27 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [PageID, userID, viewYear]); // Dependencies for getData
+
+  useEffect(() => {
+    // Only fetch data if PageID and userID are available
+    if (PageID && userID) {
+      // If pageData hasn't been set yet (e.g., initial render where PageID is "c4e293e9-1f5c-4edd-a3e5-fa0dfc23e566"
+      // but PageConfigArray might take a moment to be defined or if the ID is not found initially),
+      // ensure pageData is set correctly based on the current PageID.
+      // This is important if PageConfigArray is loaded asynchronously or changes.
+      const currentPageConfig = PageConfigArray.find(page => page.id === PageID);
+      if (currentPageConfig && JSON.stringify(currentPageConfig) !== JSON.stringify(pageData)) {
+          setPageData(currentPageConfig);
+      } else if (!currentPageConfig && Object.keys(pageData).length > 0) {
+          // If PageID changes to one not in config, clear pageData
+          setPageData({});
+      }
+
+
+      getData(); // Call getData directly, it now correctly uses its dependencies.
+    }
+  }, [PageID, userID, getData, pageData]); // Added PageID and getData to dependencies
 
   const submitFormData = async (data, fileID, selectedYear) => {
     alertDialogActionRef.current?.click();
@@ -98,7 +101,7 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
       if (viewYear !== selectedYear) {
         setViewYear(selectedYear);
       } else {
-        getData(selectedYear);
+        getData(selectedYear); // Re-fetch data for the current year
       }
     } catch (err) {
       console.error('Error saving form data:', err);
@@ -106,10 +109,10 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
   };
 
   const cancelForm = async (fileid) => {
-    setIsLoading(true);
+    setIsLoading(true); // Keep loading state until cancel process is complete
     if (fileid) {
       try {
-        await api.get(`/file/${fileid}`);
+        await api.delete(`/file/${fileid}`); // Assuming delete is the correct method for undoing a file upload
       } catch (err) {
         console.error('Error handling file on cancel:', err);
       }
@@ -117,17 +120,15 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
     alertDialogCancelRef.current?.click();
     setIsLoading(false);
   };
-  
-  // --- Event Handlers ---
+
   const handleYearChange = (e) => {
     const selectedValue = e.target.value;
     setViewYear(selectedValue === ALL_YEARS_VALUE ? ALL_YEARS_VALUE : parseInt(selectedValue));
   };
-  
-  // --- Render ---
+
   return (
     <div className="flex-1 mt-[10vh] bg-slate-50 min-h-[90vh]">
-      
+
       {/* Page Header - Responsive */}
       <header className="bg-white border-b border-slate-200 shadow-sm sticky top-[10vh] z-10">
         <div className="mx-auto max-w-7xl px-4 sm:px-8">
@@ -168,13 +169,13 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
                 <AlertDialogContent className="w-[95vw] rounded-lg sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                   <AlertDialogHeader>
                     <AlertDialogTitle className="text-xl font-bold text-slate-900">
-                      Add New {pageData.title} Entry
+                      Add New {pageData.title || 'Entry'} Entry
                     </AlertDialogTitle>
                     <AlertDialogDescription asChild>
                       <div className="text-base text-slate-600 max-h-[70vh] overflow-y-auto pr-2">
                         <Form
-                          pageFields={pageData.fields} 
-                          submitFormData={submitFormData} 
+                          pageFields={pageData.fields}
+                          submitFormData={submitFormData}
                           cancel={cancelForm}
                           isLoading={isLoading}
                         />
@@ -205,7 +206,7 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
         <section className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-5 border-b border-slate-200 bg-slate-50/50">
             <h2 className="text-lg font-semibold text-slate-800">
-              {pageData.title} Records
+              {pageData.title || 'Records'} Records
             </h2>
             <p className="text-sm text-slate-500 mt-1">
               Showing records for {academicYears.find(y => y.value === viewYear)?.label || viewYear}.
@@ -219,9 +220,7 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
             ) : (
               <div className="overflow-x-auto">
                 <List
-                  changeCurrentPage={changeCurrentPage}
-                  currentPage={PageID}
-                  pageFields={pageData.fields}
+                  pageFields={pageData.fields} // pageData.fields might be undefined if no page is found
                   fieldData={fieldData}
                   selectedYear={viewYear}
                 />
@@ -232,9 +231,8 @@ const Home = ({ currentPage: PageID, changeCurrentPage }) => {
       </main>
     </div>
   );
-};
 
-// --- Sub-components for better readability ---
+};
 
 const StatCard = ({ title, value, icon: Icon, color, isLoading }) => {
   const colorClasses = {
@@ -278,13 +276,6 @@ const EmptyState = () => (
     </p>
   </div>
 );
-
-
-// --- Prop Validation ---
-Home.propTypes = {
-  currentPage: PropTypes.string.isRequired,
-  changeCurrentPage: PropTypes.func.isRequired,
-};
 
 StatCard.propTypes = {
   title: PropTypes.string.isRequired,

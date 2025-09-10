@@ -105,7 +105,7 @@ const facultyLayoutStyles = {
   overlay: { position: 'fixed', inset: '0', backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 30 },
 };
 
-const FacultyLayout = ({ user, handleLogout, currentPage, setCurrentPage }) => {
+const FacultyLayout = ({ user, handleLogout }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const isMobile = useMediaQuery('(max-width: 768px)');
 
@@ -124,12 +124,12 @@ const FacultyLayout = ({ user, handleLogout, currentPage, setCurrentPage }) => {
     <div style={facultyLayoutStyles.container}>
       {isMobile && isSidebarOpen && <div onClick={() => setSidebarOpen(false)} style={facultyLayoutStyles.overlay} />}
       <div style={sidebarStyle}>
-        <SideBar changeCurrentPage={setCurrentPage} closeSidebar={() => setSidebarOpen(false)} />
+        <SideBar closeSidebar={() => setSidebarOpen(false)} />
       </div>
       <div style={contentStyle}>
         <Navbar user={user} handleLogout={handleLogout} toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} isMobile={isMobile} />
         <main style={facultyLayoutStyles.mainContent}>
-          <Outlet context={{ currentPage, setCurrentPage }} />
+          <Outlet context={{}} />
         </main>
       </div>
     </div>
@@ -154,7 +154,6 @@ const HodLayout = ({ user, handleLogout }) => (
 // 5. MAIN APP COMPONENT
 // ============================================================================
 const App = () => {
-  const [currentPage, setCurrentPage] = useState("c4e293e9-1f5c-4edd-a3e5-fa0dfc23e566");
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -190,11 +189,13 @@ const App = () => {
       case 'vc':
       case 'faculty':
         return (
-          <Route element={<FacultyLayout user={user} handleLogout={handleLogout} currentPage={currentPage} setCurrentPage={setCurrentPage} />}>
-            <Route path="/" element={<Home currentPage={currentPage} changeCurrentPage={setCurrentPage} />} />
+          <Route element={
+            <FacultyLayout user={user} handleLogout={handleLogout} />
+          }>
+            <Route path="/" element={<Home />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/copo" element={<CoAnalysis />} />
-            <Route path="/test" element={<Testing />} />
+            <Route path="/report-generator" element={<Testing />} />
             <Route path="/pdf-test" element={<PDFTestPage />} />
           </Route>
         );
@@ -231,7 +232,7 @@ const App = () => {
 
 // --- Prop Types ---
 ProtectedRoute.propTypes = { user: PropTypes.object, allowedRoles: PropTypes.arrayOf(PropTypes.string).isRequired };
-FacultyLayout.propTypes = { user: PropTypes.object.isRequired, handleLogout: PropTypes.func.isRequired, currentPage: PropTypes.string.isRequired, setCurrentPage: PropTypes.func.isRequired };
+FacultyLayout.propTypes = { user: PropTypes.object.isRequired, handleLogout: PropTypes.func.isRequired };
 HodLayout.propTypes = { user: PropTypes.object.isRequired, handleLogout: PropTypes.func.isRequired };
 
 export default App;
