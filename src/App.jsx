@@ -169,6 +169,7 @@ const App = () => {
       }
     };
     initializeUser();
+    console.log("App initialized");
   }, []);
 
   const handleLogout = async () => {
