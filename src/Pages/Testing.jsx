@@ -1,5 +1,3 @@
-// src/pages/Testing.js
-
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
 import { getCurrentUser } from '../utils/auth';
@@ -35,14 +33,13 @@ const Testing = () => {
     fetchData();
   }, []);
 
-  // No more useMemo or PDF generation logic here!
 
   if (!user) {
     return <div className="text-center p-10">Please log in to generate a report.</div>;
   }
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 my-12 py-8">
       <div className="container mx-auto px-4 flex flex-col items-center">
         <h1 className="text-3xl font-bold mb-6 border-b pb-2">Generate User Report</h1>
         
@@ -52,7 +49,6 @@ const Testing = () => {
             Your report data is ready to be generated. Select a year and click the button below to download the report as a PDF.
         </p>
 
-        {/* --- Render the reusable button component --- */}
         <ReportGeneratorButton reportData={rawData} isLoading={loading} />
 
       </div>

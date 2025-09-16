@@ -23,8 +23,11 @@ import { getCurrentUser } from '../../../utils/auth';
 import api from '../../../utils/api';
 import PdfBadge from './PdfBadge';
 import { AlertCircle, Loader2 } from "lucide-react";
+import { useParams } from 'react-router-dom';
 
-const List = ({ currentPage, pageFields, fieldData: initialFieldData, flag, selectedYear }) => {
+const List = ({ pageFields, fieldData: initialFieldData, flag, selectedYear }) => {
+  const params = useParams();
+  const currentPage = params.currentPage || "c4e293e9-1f5c-4edd-a3e5-fa0dfc23e566";
   const [fields, setFields] = useState([]);
   const [fieldData, setFieldData] = useState([]);
   const [deleteId, setDeleteId] = useState(null);
